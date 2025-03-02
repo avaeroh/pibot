@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Raspberry Pi Robot Control</title>
+    <style>
+        body {
+            text-align: center;
+            margin-top: 100px;
+            font-family: Arial, sans-serif;
+        }
+        button {
+            width: 100px;
+            height: 50px;
+            margin: 10px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+<h1>Raspberry Pi Robot Control</h1>
+
+<button onclick="move('forwards')">⬆️ Forward</button><br>
+<button onclick="move('left')">⬅️ Left</button>
+<button onclick="move('stop')">⏹️ Stop</button>
+<button onclick="move('right')">➡️ Right</button><br>
+<button onclick="move('backwards')">⬇️ Backward</button>
+
+<script>
+    async function move(direction) {
+        const url = '/move';
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ direction: direction })
+        });
+
+        const data = await response.json();
+        alert(data.message);
+    }
+</script>
+</body>
+</html>
