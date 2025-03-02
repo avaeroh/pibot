@@ -21,39 +21,38 @@ GPIO.setup(pinMotorBForwards, GPIO.OUT)
 GPIO.setup(pinMotorBBackwards, GPIO.OUT)
 
 # Turn all motors off
-def StopMotors():
-    GPIO.output(pinMotorAForwards, 0)
-    GPIO.output(pinMotorABackwards, 0)
-    GPIO.output(pinMotorBForwards, 0)
-    GPIO.output(pinMotorBBackwards, 0)
+def Stop():
+    GPIO.output([pinMotorAForwards, pinMotorABackwards, pinMotorBForwards, pinMotorBBackwards], 0)
 
-# Turn both motors forwards
 def Forwards():
+    print("Moving Forwards")
     GPIO.output(pinMotorAForwards, 1)
-    GPIO.output(pinMotorABackwards, 0)
     GPIO.output(pinMotorBForwards, 1)
-    GPIO.output(pinMotorBBackwards, 0)
+    time.sleep(button_delay)
+    Stop()
 
-# Turn both motors backwards
 def Backwards():
-    GPIO.output(pinMotorAForwards, 0)
+    print("Moving Backwards")
     GPIO.output(pinMotorABackwards, 1)
-    GPIO.output(pinMotorBForwards, 0)
     GPIO.output(pinMotorBBackwards, 1)
+    time.sleep(button_delay)
+    Stop()
 
 def Left():
+    print("Turning Left")
     GPIO.output(pinMotorAForwards, 1)
-    GPIO.output(pinMotorABackwards, 0)
-    GPIO.output(pinMotorBForwards, 0)
     GPIO.output(pinMotorBBackwards, 1)
+    time.sleep(button_delay)
+    Stop()
 
 def Right():
-    GPIO.output(pinMotorAForwards, 0)
+    print("Turning Right")
     GPIO.output(pinMotorABackwards, 1)
     GPIO.output(pinMotorBForwards, 1)
-    GPIO.output(pinMotorBBackwards, 0)
+    time.sleep(button_delay)
+    Stop()
 
-StopMotors()
+Stop()
 import sys, termios, tty, os
 
 def getch():

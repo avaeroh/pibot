@@ -1,8 +1,15 @@
-from flask import Flask, jsonify
+# filepath: /Users/Jonathan.Millington-Hotze/Documents/Personal/repos/pibot/app.py
+from flask import Flask, jsonify, send_from_directory
 from utility.movement_controls import Forwards, Backwards, Left, Right, Stop
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static')
 
+# UI route
+@app.route('/')
+def index():
+    return send_from_directory(app.static_folder, 'index.html')
+
+# HTTP movement controls
 @app.route('/forwards', methods=['POST'])
 def move_forwards():
     Forwards()
