@@ -7,7 +7,7 @@
     <style>
         body {
             text-align: center;
-            margin-top: 100px;
+            margin-top: 20px;
             font-family: Arial, sans-serif;
         }
         button {
@@ -20,27 +20,67 @@
         #output {
             margin-top: 20px;
             width: 80%;
-            height: 200px;
+            height: 100px; /* Reduced height for mobile visibility */
             border: 1px solid #ccc;
             overflow-y: auto;
             text-align: left;
             padding: 10px;
             font-family: monospace;
         }
+        #video {
+            width: 100%;
+            max-width: 640px;
+            height: auto;
+            border: 1px solid #ccc;
+            margin-top: 20px;
+        }
+        @media (max-width: 600px) {
+            button {
+                width: 80px;
+                height: 40px;
+                font-size: 14px;
+            }
+            #output {
+                width: 90%;
+                height: 50px; /* Further reduced height for mobile visibility */
+            }
+        }
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .controls button {
+            flex: 1 1 30%;
+            margin: 5px;
+        }
     </style>
 </head>
 <body>
 <h1>Raspberry Pi Robot Control</h1>
 
-<button onclick="move('forwards')">⬆️ Forward</button><br>
-<button onclick="move('left')">⬅️ Left</button>
-<button onclick="move('stop')">⏹️ Stop</button>
-<button onclick="move('right')">➡️ Right</button><br>
-<button onclick="move('backwards')">⬇️ Backward</button>
+<img id="video" src="" onerror="handleVideoError()">
+
+<div class="controls">
+    <button onclick="move('forwards')">⬆️ Forward</button>
+    <button onclick="move('left')">⬅️ Left</button>
+    <button onclick="move('stop')">⏹️ Stop</button>
+    <button onclick="move('right')">➡️ Right</button>
+    <button onclick="move('backwards')">⬇️ Backward</button>
+</div>
 
 <div id="output"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.min.js"></script>
 <script>
+    const socket = io();
+    let videoErrorHandled = false;
+
+    socket.on('video_frame', function(data) {
+        const video = document.getElementById('video');
+        video.src = 'data:image/jpeg;base64,' + data.data;
+    });
+
     async function move(direction) {
         const url = `/${direction}`;
 
@@ -59,6 +99,14 @@
         const outputDiv = document.getElementById('output');
         outputDiv.innerHTML += `<div>${message}</div>`;
         outputDiv.scrollTop = outputDiv.scrollHeight;
+    }
+
+    function handleVideoError() {
+        if (!videoErrorHandled) {
+            const video = document.getElementById('video');
+            video.src = 'images/no-camera.png';
+            videoErrorHandled = true;
+        }
     }
 
     document.addEventListener('keydown', function(event) {

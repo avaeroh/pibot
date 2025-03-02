@@ -1,5 +1,3 @@
-version: "3.8"
-
 networks:
   raspi_network:
     driver: bridge
@@ -15,12 +13,14 @@ services:
     restart: always
     environment:
       - PYTHONUNBUFFERED=${PYTHONUNBUFFERED}
+      - BUTTON_DELAY=${BUTTON_DELAY}
+      - FLASK_PORT=${FLASK_PORT}
     volumes:
       - .:/app
     networks:
       - raspi_network
     ports:
-      - "5000:5000"
+      - "${FLASK_PORT}:${FLASK_PORT}"
     command: python3 app.py
 
   portainer:

@@ -1,8 +1,6 @@
 # CamJam EduKit 3 - Robotics
-# Wii controller remote control script
-
-import RPi.GPIO as GPIO # Import the GPIO Library
-import time # Import the Time library
+import RPi.GPIO as GPIO 
+import time 
 
 # Set the GPIO modes
 GPIO.setmode(GPIO.BCM)
