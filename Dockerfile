@@ -8,9 +8,9 @@ RUN apt-get update && \
 
 COPY . /app
 
-RUN pip install --no-cache-dir flask pytest python-dotenv
+RUN pip install --no-cache-dir flask python-dotenv
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 
-CMD ["python3", "pibot.py"]
+CMD ["python3", "app.py"]
