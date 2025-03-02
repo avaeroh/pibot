@@ -10,7 +10,7 @@ services:
     privileged: true
     devices:
       - "/dev/gpiomem:/dev/gpiomem"
-    restart: always
+    restart: on-failure
     environment:
       - PYTHONUNBUFFERED=${PYTHONUNBUFFERED}
       - BUTTON_DELAY=${BUTTON_DELAY}
@@ -26,7 +26,7 @@ services:
   portainer:
     image: portainer/portainer-ce:latest
     container_name: portainer
-    restart: always
+    restart: on-failure
     ports:
       - "${PORTAINER_PORT}:9000"
     volumes:
