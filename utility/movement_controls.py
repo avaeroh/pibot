@@ -29,8 +29,7 @@ def Stop():
 
 def Forwards():
     print("Moving Forwards")
-    GPIO.output(pinMotorAForwards, 1)
-    GPIO.output(pinMotorBForwards, 1)
+    GPIO.output([pinMotorAForwards, pinMotorBForwards], 1)
     time.sleep(button_delay)
     Stop()
 
