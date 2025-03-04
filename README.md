@@ -22,6 +22,7 @@ I have bundled everything as a Docker image as I want to give flexibility to upd
 
 # Instructions
 
+0. Install docker if you have not already: `https://docs.docker.com/engine/install/debian/`
 1. Set your `.env`, something like...
 
 ```env
