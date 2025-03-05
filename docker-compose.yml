@@ -10,6 +10,10 @@ services:
     privileged: true
     devices:
       - "/dev/gpiomem:/dev/gpiomem"
+      - "/dev/vchiq:/dev/vchiq"
+      - "/dev/video0:/dev/video0"
+    group_add:
+      - video
     restart: on-failure
     environment:
       - PYTHONUNBUFFERED=${PYTHONUNBUFFERED}

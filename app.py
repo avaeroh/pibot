@@ -8,7 +8,7 @@ import io
 import base64
 
 try:
-    import picamera
+    from picamera2 import Picamera2, Preview
     CAMERA_AVAILABLE = True
 except ImportError:
     CAMERA_AVAILABLE = False
@@ -47,18 +47,18 @@ def stop_movement():
 
 def capture_frames():
     if CAMERA_AVAILABLE:
-        with picamera.PiCamera() as camera:
-            camera.resolution = (640, 480)
-            camera.framerate = 24
-            time.sleep(2)  # Camera warm-up time
-            stream = io.BytesIO()
-            for _ in camera.capture_continuous(stream, 'jpeg', use_video_port=True):
-                stream.seek(0)
-                frame = stream.read()
-                encoded_frame = base64.b64encode(frame).decode('utf-8')
-                socketio.emit('video_frame', {'data': encoded_frame})
-                stream.seek(0)
-                stream.truncate()
+        camera = Picamera2()
+        camera.resolution = (640, 480)
+        camera.framerate = 24
+        time.sleep(2)  # Camera warm-up time
+        stream = io.BytesIO()
+        for _ in camera.capture_continuous(stream, 'jpeg', use_video_port=True):
+            stream.seek(0)
+            frame = stream.read()
+            encoded_frame = base64.b64encode(frame).decode('utf-8')
+            socketio.emit('video_frame', {'data': encoded_frame})
+            stream.seek(0)
+            stream.truncate()
     else:
         # Mock camera functionality for development on non-Raspberry Pi systems
         import cv2
