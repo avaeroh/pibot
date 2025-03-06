@@ -21,16 +21,15 @@ RUN apt-get update && \
 COPY . /app
 
 # Install Python dependencies
-RUN pip install flask python-dotenv flask-socketio opencv-python "numpy<2"
-# COPY requirements.txt /app/requirements.txt
-# RUN pip install -r requirements.txt
+COPY requirements.txt /app/requirements.txt
+RUN pip install -r requirements.txt
 
 # Handle Pi-specific dependencies
 COPY handle_pi_specific_dependencies.sh /app/handle_pi_specific_dependencies.sh
 RUN /app/handle_pi_specific_dependencies.sh
 
 # TensorFlow Lite installation and model download
-RUN pip install -r /app/tflite/requirements.txt
+# RUN pip install -r /app/tflite/requirements.txt
 
 # RUN mkdir -p /app/models && \
 #     curl -L 'https://storage.googleapis.com/download.tensorflow.org/models/tflite/task_library/object_detection/rpi/lite-model_efficientdet_lite0_detection_metadata_1.tflite' -o /app/models/efficientdet_lite0.tflite && \
