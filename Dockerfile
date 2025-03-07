@@ -14,7 +14,7 @@ RUN echo "deb [signed-by=/usr/share/keyrings/raspberrypi-archive-keyring.gpg] ht
 
 # Install required system dependencies
 RUN apt-get update && \
-    apt-get install -y python3-pip python3-rpi.gpio libgl1-mesa-glx libglib2.0-0 curl v4l-utils python3-picamera2 libcamera-apps && \
+    apt-get install -y python3-pip python3-rpi.gpio libgl1-mesa-glx libglib2.0-0 curl v4l-utils python3-opencv libcamera-apps && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Copy application files
@@ -23,10 +23,6 @@ COPY . /app
 # Install Python dependencies
 COPY requirements.txt /app/requirements.txt
 RUN pip install -r requirements.txt
-
-# Handle Pi-specific dependencies
-COPY handle_pi_specific_dependencies.sh /app/handle_pi_specific_dependencies.sh
-RUN /app/handle_pi_specific_dependencies.sh
 
 # TensorFlow Lite installation and model download
 # RUN pip install -r /app/tflite/requirements.txt

@@ -6,12 +6,7 @@ import time
 from threading import Thread
 import io
 import base64
-
-try:
-    from picamera2 import Picamera2, Preview
-    CAMERA_AVAILABLE = True
-except ImportError:
-    CAMERA_AVAILABLE = False
+import cv2
 
 app = Flask(__name__, static_folder='static')
 socketio = SocketIO(app)
@@ -45,36 +40,37 @@ def stop_movement():
     Stop()
     return jsonify({"message": "Stopped"})
 
+# Camera capture function
 def capture_frames():
-    if CAMERA_AVAILABLE:
-        camera = Picamera2()
-        camera.resolution = (640, 480)
-        camera.framerate = 24
-        time.sleep(2)  # Camera warm-up time
-        stream = io.BytesIO()
-        for _ in camera.capture_continuous(stream, 'jpeg', use_video_port=True):
-            stream.seek(0)
-            frame = stream.read()
-            encoded_frame = base64.b64encode(frame).decode('utf-8')
-            socketio.emit('video_frame', {'data': encoded_frame})
-            stream.seek(0)
-            stream.truncate()
-    else:
-        # Mock camera functionality for development on non-Raspberry Pi systems
-        import cv2
-        cap = cv2.VideoCapture(0)
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                continue
-            _, buffer = cv2.imencode('.jpg', frame)
-            encoded_frame = base64.b64encode(buffer).decode('utf-8')
-            socketio.emit('video_frame', {'data': encoded_frame})
-            time.sleep(1 / 24)  # Simulate 24 fps
+    print("Starting video capture with OpenCV")
+
+    # Try opening the camera
+    cap = cv2.VideoCapture(0)
+    # Check if the camera was opened successfully
+    if not cap.isOpened():
+        print("Error: Camera is not accessible.")
+        sys.exit(1)  # Exit the application if camera cannot be opened
+
+    print("Camera initialized successfully")
+    
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            print("Failed to read frame")
+            time.sleep(1)  # Optional: Add a sleep time to avoid busy-waiting
+            continue
+        
+        # Process and send the frame
+        _, buffer = cv2.imencode('.jpg', frame)
+        encoded_frame = base64.b64encode(buffer).decode('utf-8')
+        socketio.emit('video_frame', {'data': encoded_frame})
+        time.sleep(1 / 24)  # Simulate 24 fps
 
 @socketio.on('connect')
 def handle_connect():
+    print("Client connected, starting video stream")
     thread = Thread(target=capture_frames)
+    thread.daemon = True
     thread.start()
 
 if __name__ == '__main__':
