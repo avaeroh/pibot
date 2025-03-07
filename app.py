@@ -1,3 +1,4 @@
+import sys
 from flask import Flask, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
 from utility.movement_controls import Forwards, Backwards, Left, Right, Stop
@@ -9,7 +10,7 @@ import base64
 import cv2
 
 app = Flask(__name__, static_folder='static')
-socketio = SocketIO(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 @app.route('/')
 def index():
@@ -40,31 +41,38 @@ def stop_movement():
     Stop()
     return jsonify({"message": "Stopped"})
 
-# Camera capture function
+
+
 def capture_frames():
     print("Starting video capture with OpenCV")
 
-    # Try opening the camera
-    cap = cv2.VideoCapture(0)
-    # Check if the camera was opened successfully
+    # Try opening the video stream with a generic backend
+    cap = cv2.VideoCapture(0, cv2.CAP_ANY)
+    time.sleep(1)  # Allow time for the camera to initialize
+
     if not cap.isOpened():
         print("Error: Camera is not accessible.")
-        sys.exit(1)  # Exit the application if camera cannot be opened
+        sys.exit(1)
 
     print("Camera initialized successfully")
-    
+
     while True:
         ret, frame = cap.read()
         if not ret:
             print("Failed to read frame")
-            time.sleep(1)  # Optional: Add a sleep time to avoid busy-waiting
+            time.sleep(10)
             continue
-        
-        # Process and send the frame
+
+        # Debugging: Confirm frame capture and size
+        print("Frame captured successfully, sending via WebSocket...")
+
         _, buffer = cv2.imencode('.jpg', frame)
         encoded_frame = base64.b64encode(buffer).decode('utf-8')
-        socketio.emit('video_frame', {'data': encoded_frame})
-        time.sleep(1 / 24)  # Simulate 24 fps
+
+        # Send the frame via socket.io
+        socketio.emit('video_frame', {'data': encoded_frame}, namespace='/')
+
+        time.sleep(1 / 24)  # 24 FPS
 
 @socketio.on('connect')
 def handle_connect():

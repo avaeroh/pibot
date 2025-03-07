@@ -4,6 +4,7 @@ networks:
 
 services:
   pibot:
+    container_name: pibot
     build:
       context: .
       dockerfile: Dockerfile

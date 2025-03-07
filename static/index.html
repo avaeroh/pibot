@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,6 +11,7 @@
             margin-top: 20px;
             font-family: Arial, sans-serif;
         }
+
         button {
             width: 100px;
             height: 50px;
@@ -17,6 +19,7 @@
             font-size: 16px;
             cursor: pointer;
         }
+
         #output {
             margin-top: 20px;
             width: 100%;
@@ -28,6 +31,7 @@
             font-family: monospace;
             box-sizing: border-box;
         }
+
         #video {
             width: 100%;
             max-width: 640px;
@@ -35,103 +39,130 @@
             border: 1px solid #ccc;
             margin-top: 20px;
         }
+
         @media (max-width: 600px) {
             button {
                 width: 80px;
                 height: 40px;
                 font-size: 14px;
             }
+
             #output {
                 width: 100%;
-                height: 50px; 
+                height: 50px;
             }
         }
+
         .controls {
             display: flex;
             flex-wrap: wrap;
             justify-content: center;
         }
+
         .controls-row {
             display: flex;
             justify-content: center;
             width: 100%;
         }
+
         .controls-row button {
             flex: 1;
             margin: 5px;
         }
     </style>
 </head>
+
 <body>
-<h1>Pibot Movement Controls</h1>
+    <h1>Pibot Movement Controls</h1>
 
-<img id="video" src="" alt="Video feed unavailable, check logs">
+    <img id="video" src="" alt="Video feed unavailable, check logs" onerror="handleVideoError()">
 
-<div class="controls">
-    <div class="controls-row">
-        <button onclick="move('left')">⬅️ Left</button>
-        <button onclick="move('forwards')">⬆️ Forward</button>
-        <button onclick="move('right')">➡️ Right</button>
+    <div class="controls">
+        <div class="controls-row">
+            <button onclick="move('left')">⬅️ Left</button>
+            <button onclick="move('forwards')">⬆️ Forward</button>
+            <button onclick="move('right')">➡️ Right</button>
+        </div>
+        <div class="controls-row">
+            <button onclick="move('backwards')">⬇️ Backward</button>
+        </div>
+        <div class="controls-row">
+            <button onclick="move('stop')">⏹️ Stop</button>
+        </div>
     </div>
-    <div class="controls-row">
-        <button onclick="move('backwards')">⬇️ Backward</button>
-    </div>
-    <div class="controls-row">
-        <button onclick="move('stop')">⏹️ Stop</button>
-    </div>
-</div>
 
-<div id="output"></div>
+    <div id="output"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.min.js"></script>
-<script>
-    const socket = io();
-    let videoErrorHandled = false;
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.min.js"></script>
+    <script>
+        const socket = io();
 
-    socket.on('video_frame', function(data) {
-        const video = document.getElementById('video');
-        video.src = 'data:image/jpeg;base64,' + data.data;
-    });
-
-    async function move(direction) {
-        const url = `/${direction}`;
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
+        socket.on('video_frame', function (data) {
+            if (data && data.data) {
+                const video = document.getElementById('video');
+                video.src = 'data:image/jpeg;base64,' + data.data;
+            } else {
+                console.error('Error: Received invalid video frame.');
+                logOutput('Error: Invalid video frame data.');
             }
         });
 
-        const data = await response.json();
-        logOutput(`${new Date().toLocaleTimeString()}: ${data.message}`);
-    }
+        socket.on('connect_error', function () {
+            console.error('Connection error with the socket.');
+            logOutput('Error: Unable to connect to the video feed.');
+        });
 
-    function logOutput(message) {
-        const outputDiv = document.getElementById('output');
-        outputDiv.innerHTML += `<div>${message}</div>`;
-        outputDiv.scrollTop = outputDiv.scrollHeight;
-    }
+        socket.on('reconnect', function () {
+            console.log('Reconnected to the server.');
+            logOutput('Reconnected to video feed.');
+        });
 
-    document.addEventListener('keydown', function(event) {
-        switch(event.key) {
-            case 'w':
-                move('forwards');
-                break;
-            case 'a':
-                move('left');
-                break;
-            case 's':
-                move('backwards');
-                break;
-            case 'd':
-                move('right');
-                break;
-            case ' ':
-                move('stop');
-                break;
+        async function move(direction) {
+            const url = `/${direction}`;
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const data = await response.json();
+            logOutput(`${new Date().toLocaleTimeString()}: ${data.message}`);
         }
-    });
-</script>
+
+        function logOutput(message) {
+            const outputDiv = document.getElementById('output');
+            outputDiv.innerHTML += `<div>${message}</div>`;
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+        }
+
+        function handleVideoError() {
+            const video = document.getElementById('video');
+            video.src = ''; // Clear the video source
+            logOutput('Error: Unable to display video feed.');
+        }
+
+        document.addEventListener('keydown', function (event) {
+            switch (event.key) {
+                case 'w':
+                    move('forwards');
+                    break;
+                case 'a':
+                    move('left');
+                    break;
+                case 's':
+                    move('backwards');
+                    break;
+                case 'd':
+                    move('right');
+                    break;
+                case ' ':
+                    move('stop');
+                    break;
+            }
+        });
+    </script>
 </body>
+
 </html>
