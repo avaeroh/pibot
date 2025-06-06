@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Raspberry Pi Robot Control</title>
+    <style>
+        body {
+            text-align: center;
+            margin-top: 20px;
+            font-family: Arial, sans-serif;
+        }
+
+        button {
+            width: 100px;
+            height: 50px;
+            margin: 10px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        #output {
+            margin-top: 20px;
+            width: 100%;
+            height: 150px;
+            border: 1px solid #ccc;
+            overflow-y: auto;
+            text-align: left;
+            padding: 10px;
+            font-family: monospace;
+            box-sizing: border-box;
+        }
+
+        #video {
+            width: 100%;
+            max-width: 640px;
+            height: auto;
+            border: 1px solid #ccc;
+            margin: 20px auto 0 auto;
+            /* Center horizontally */
+            display: none;
+        }
+
+        #spinner {
+            margin: 20px auto 0 auto;
+            /* Center horizontally */
+            width: 40px;
+            height: 40px;
+            border: 4px solid #ccc;
+            border-top: 4px solid #555;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @media (max-width: 600px) {
+            button {
+                width: 80px;
+                height: 40px;
+                font-size: 14px;
+            }
+
+            #output {
+                height: 80px;
+            }
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .controls-row {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+        }
+
+        .controls-row button {
+            flex: 1;
+            margin: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Pibot Movement Controls</h1>
+
+    <div id="spinner"></div>
+    <img id="video" src="" alt="Video feed unavailable">
+
+    <div class="controls">
+        <div class="controls-row">
+            <button onclick="move('left')">⬅️ Left</button>
+            <button onclick="move('forwards')">⬆️ Forward</button>
+            <button onclick="move('right')">➡️ Right</button>
+        </div>
+        <div class="controls-row">
+            <button onclick="move('backwards')">⬇️ Backward</button>
+        </div>
+        <div class="controls-row">
+            <button onclick="move('stop')">⏹️ Stop</button>
+        </div>
+    </div>
+
+    <div id="output"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.min.js"></script>
+    <script>
+        const socket = io();
+        let retryInterval = null;
+        let retryActive = false;
+        let connectionFailures = 0;
+        let allowConnectionErrors = false;
+
+        setTimeout(() => {
+            allowConnectionErrors = true;
+        }, 5000);
+
+        socket.on('video_frame', function (data) {
+            const video = document.getElementById('video');
+            const spinner = document.getElementById('spinner');
+
+            if (data && typeof data.data === 'string' && data.data.length > 100) {
+                video.src = 'data:image/jpeg;base64,' + data.data;
+                video.style.display = 'block';
+                spinner.style.display = 'none';
+
+                if (retryInterval) {
+                    clearInterval(retryInterval);
+                    retryInterval = null;
+                }
+
+                if (retryActive) {
+                    retryActive = false;
+                    logOutput('✅ Video feed restored.');
+                }
+            } else {
+                if (!retryActive) {
+                    retryActive = true;
+                    logOutput('⚠️ No valid video frame received. Starting retry loop...');
+                    startRetryLoop();
+                }
+                video.style.display = 'none';
+                spinner.style.display = 'block';
+            }
+        });
+
+        socket.on('connect_error', function () {
+            connectionFailures++;
+            if (allowConnectionErrors && connectionFailures >= 3 && connectionFailures % 3 === 0) {
+                logOutput('⚠️ Unable to connect to the video feed.');
+            }
+        });
+
+        socket.on('connect', function () {
+            connectionFailures = 0;
+        });
+
+        socket.on('reconnect', function () {
+            logOutput('Reconnected to video feed.');
+        });
+
+        async function move(direction) {
+            const url = `/${direction}`;
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const data = await response.json();
+            logOutput(`${new Date().toLocaleTimeString()}: ${data.message}`);
+        }
+
+        function logOutput(message) {
+            const outputDiv = document.getElementById('output');
+            outputDiv.innerHTML += `<div>${message}</div>`;
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+        }
+
+        function startRetryLoop() {
+            const video = document.getElementById('video');
+            const spinner = document.getElementById('spinner');
+
+            retryInterval = setInterval(() => {
+                logOutput('🔄 Retrying video connection...');
+                video.src = 'data:image/jpeg;base64,';
+                video.style.display = 'none';
+                spinner.style.display = 'block';
+            }, 3000);
+
+            fetch('/logs')
+                .then(res => res.json())
+                .then(logs => {
+                    logOutput('<strong>Latest server logs:</strong>');
+                    logs.forEach(line => logOutput(line));
+                })
+                .catch(err => {
+                    logOutput('Failed to fetch server logs: ' + err);
+                });
+        }
+
+        document.addEventListener('keydown', function (event) {
+            switch (event.key) {
+                case 'w': move('forwards'); break;
+                case 'a': move('left'); break;
+                case 's': move('backwards'); break;
+                case 'd': move('right'); break;
+                case ' ': move('stop'); break;
+            }
+        });
+    </script>
+</body>
+
+</html>
