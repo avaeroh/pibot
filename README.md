@@ -134,6 +134,5 @@ make run
 
 ## TODO
 
-- Add `mock_gpio.py` and mock camera interface for development without Pi  
-- Improve frontend with camera status indicator  
-- Optionally auto-restart failed `libcamera-vid` processes  
+- Improve frontend with camera status indicator & quality
+- add object detection & non-user driven behaviour
