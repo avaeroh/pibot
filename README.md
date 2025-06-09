@@ -13,10 +13,10 @@ My robot Pi! This has been built with:
 ## Current Functionality
 
 - Flask-based webserver for PiCamera streaming and WASD/button control  
-- Real-time video streaming using `libcamera-vid` piped to OpenCV  
-- Log capture and debugging available in-browser  
+- Real-time video streaming using `libcamera-vid` 
 - Graceful teardown of camera processes and cleanup on exit  
-- Automatic setup via Makefile
+- Automatic install/run via Makefile
+- Can be developed against without GPIO functionality (utilising a mocked import of GPIO)
 
 ---
 
@@ -26,7 +26,7 @@ My robot Pi! This has been built with:
 - Raspberry Pi 4B  
 - PiCamera v2+  
 - Python 3.11+  
-- `make`  
+- `make` cli binary
 - Network access to the Pi from a browser
 
 ---
