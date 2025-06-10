@@ -51,7 +51,7 @@ download-models:
 
 run:
 	@echo "[Run] Starting application"
-	PYTHONUNBUFFERED=1 PYTHONPATH=$(PWD) $(VENV_DIR)/bin/python app.py
+	PYTHONUNBUFFERED=1 PYTHONPATH=$(PWD) $(VENV_DIR)/bin/python main.py
 
 setup-pipe:
 	@echo "[Pipe] Creating video stream FIFO if missing"
