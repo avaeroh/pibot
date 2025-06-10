@@ -125,6 +125,7 @@ def capture_frames():
     log("Video stream opened successfully")
 
     while True:
+        
         ret, frame = cap.read()
         if not ret:
             log("Failed to read frame from stream")

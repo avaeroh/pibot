@@ -1,7 +1,13 @@
 import os
 import time
 
+# Allows for mocking GPIO for testing on a pi that is connected to a monitor
+MOCK_GPIO = os.getenv("MOCK_GPIO", "false").lower() == "true"
+
 try:
+    if MOCK_GPIO:
+        raise ImportError("Mocking GPIO as requested")
+
     import RPi.GPIO as GPIO
     GPIO_AVAILABLE = True
 

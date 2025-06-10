@@ -42,6 +42,7 @@ FLASK_PORT=5000
 LIBCAM_FPS=10
 LIBCAM_QUALITY=85
 LIBCAM_ROTATION=180 # Depending on which way up your camera is
+MOCK_GPIO=true # If you are developing on a PI with a GPIO and you don't want to move the motors while debugging
 ```
 
 ---
