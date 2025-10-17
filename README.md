@@ -8,6 +8,8 @@ My robot Pi! This has been built with:
 - 4x AA batteries (for motors)  
 - PiCamera (note: IR version has not worked reliably)
 
+![The Bot](references/pibot.png)
+
 ---
 
 ## Current Functionality
