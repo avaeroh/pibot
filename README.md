@@ -19,6 +19,7 @@ My robot Pi! This has been built with:
 - Graceful teardown of camera processes and cleanup on exit  
 - Automatic install/run via Makefile
 - Can be developed against without GPIO functionality (utilising a mocked import of GPIO)
+- Readable `pytest` suite covering movement controls, routes/logging, and camera lifecycle behaviour
 
 ---
 
@@ -57,9 +58,25 @@ make all
 
 Installs system tools, Python packages, and prepares folders.
 
+If you are developing off-device, the Python dependencies are still enough to run the test suite locally. Pi-specific hardware access is mocked in tests.
+
 ---
 
-### 3. Run the Flask app
+### 3. Run the test suite
+
+```bash
+make test
+```
+
+This will:
+
+- Run the `pytest` suite from the local virtual environment
+- Force `MOCK_GPIO=true` so motor controls can be exercised safely off-device
+- Validate the Flask routes, log buffer, movement helpers, and mocked camera stream lifecycle
+
+---
+
+### 4. Run the Flask app
 
 ```bash
 make run
@@ -74,7 +91,7 @@ This will:
 
 ---
 
-### 4. (Optional) Download TensorFlow Lite models
+### 5. (Optional) Download TensorFlow Lite models
 
 ```bash
 make download-models
@@ -84,7 +101,7 @@ Places `.tflite` files in the `models/` folder.
 
 ---
 
-### 5. Clean up (including FIFO and models)
+### 6. Clean up (including FIFO and models)
 
 ```bash
 make clean
@@ -96,6 +113,11 @@ make clean
 
 - All video is streamed over WebSocket using base64 JPEG frames  
 - The camera feed is managed using `libcamera-vid`, started and cleaned up by the Flask server  
+- Tests are organised by responsibility:
+  - `tests/test_01_movement_controls.py`
+  - `tests/test_02_routes_and_logging.py`
+  - `tests/test_03_camera_stream.py`
+- Tests are designed to run away from the Raspberry Pi by mocking GPIO access and camera/process interactions
 - Logs are stored in a ring buffer and accessible at:
 
 ```

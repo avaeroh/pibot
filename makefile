@@ -1,4 +1,4 @@
-.PHONY: all setup install-deps install-python-deps download-models run clean setup-pipe stream kill-camera
+.PHONY: all setup install-deps install-python-deps download-models run test clean setup-pipe stream kill-camera
 
 VENV_DIR := .venv
 MODEL_DIR := models
@@ -52,6 +52,10 @@ download-models:
 run:
 	@echo "[Run] Starting application"
 	PYTHONUNBUFFERED=1 PYTHONPATH=$(PWD) $(VENV_DIR)/bin/python main.py
+
+test:
+	@echo "[Test] Running test suite with mocked Pi hardware"
+	PYTHONPATH=$(PWD) MOCK_GPIO=true PYTHONPYCACHEPREFIX=/tmp/pycache $(VENV_DIR)/bin/python -m pytest
 
 setup-pipe:
 	@echo "[Pipe] Creating video stream FIFO if missing"
