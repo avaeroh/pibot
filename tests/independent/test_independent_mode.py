@@ -132,7 +132,7 @@ def test_service_respects_behavior_cooldown():
         behavior_runner=lambda bucket: calls.append(bucket) or bucket,
         camera_command_resolver=lambda: "rpicam-vid",
     )
-    service._last_trigger_times["cat"] = 50.0
+    service._last_completed_times["cat"] = 50.0
 
     service._trigger_behaviors(
         {"cat": [Detection(label="cat", score=0.88, bbox=(5, 6, 7, 8))]},
@@ -140,3 +140,56 @@ def test_service_respects_behavior_cooldown():
     )
 
     assert calls == []
+
+
+def test_service_does_not_queue_new_behavior_while_one_is_running():
+    calls = []
+
+    def behavior_runner(bucket):
+        calls.append(bucket)
+
+    service = IndependentModeService(
+        detector_factory=lambda: object(),
+        behavior_runner=behavior_runner,
+        camera_command_resolver=lambda: "rpicam-vid",
+        time_fn=lambda: 100.0,
+    )
+    service._active_behavior_bucket = "people"
+    service._behavior_thread = Mock()
+    service._behavior_thread.is_alive.return_value = True
+
+    service._trigger_behaviors(
+        {"cat": [Detection(label="cat", score=0.88, bbox=(5, 6, 7, 8))]},
+        100.0,
+    )
+
+    assert calls == []
+
+
+def test_service_cooldown_starts_after_behavior_completion():
+    timeline = [100.0, 103.0]
+    calls = []
+
+    def time_fn():
+        return timeline.pop(0)
+
+    def behavior_runner(bucket):
+        calls.append(bucket)
+        time_fn()
+        return bucket
+
+    service = IndependentModeService(
+        detector_factory=lambda: object(),
+        behavior_runner=behavior_runner,
+        camera_command_resolver=lambda: "rpicam-vid",
+        time_fn=time_fn,
+    )
+
+    service._trigger_behaviors(
+        {"people": [Detection(label="person", score=0.91, bbox=(1, 2, 3, 4))]},
+        100.0,
+    )
+    service._behavior_thread.join(timeout=1)
+
+    assert calls == ["people"]
+    assert service._last_completed_times["people"] == 103.0

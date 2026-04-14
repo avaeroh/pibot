@@ -44,12 +44,12 @@ class IndependentModeService:
         self._process = None
         self._worker_thread = None
         self._behavior_thread = None
-        self._behavior_lock = threading.Lock()
         self._lock = threading.Lock()
         self._condition = threading.Condition(self._lock)
         self._latest_frame = None
         self._event_log = []
-        self._last_trigger_times = {}
+        self._last_completed_times = {}
+        self._active_behavior_bucket = None
         self._latest_summary = "Waiting for detections"
         self._latest_buckets = {}
         self._worker_error = None
@@ -131,23 +131,34 @@ class IndependentModeService:
         self._process = None
 
     def _should_trigger(self, bucket, now):
-        last_trigger = self._last_trigger_times.get(bucket, 0)
-        return (now - last_trigger) >= BEHAVIOR_COOLDOWN_SECONDS
+        last_completed = self._last_completed_times.get(bucket)
+        if last_completed is None:
+            return True
+        return (now - last_completed) >= BEHAVIOR_COOLDOWN_SECONDS
 
     def _run_behavior(self, bucket):
-        behavior_name = self._behavior_runner(bucket)
-        if behavior_name:
-            self._append_log(f"Completed behavior for {bucket}: {behavior_name}")
+        try:
+            behavior_name = self._behavior_runner(bucket)
+            if behavior_name:
+                self._append_log(f"Completed behavior for {bucket}: {behavior_name}")
+        finally:
+            with self._lock:
+                self._last_completed_times[bucket] = self._time_fn()
+                self._active_behavior_bucket = None
 
     def _trigger_behaviors(self, buckets, now):
-        if self._behavior_thread and self._behavior_thread.is_alive():
-            return
+        with self._lock:
+            if self._active_behavior_bucket is not None:
+                return
 
         for bucket in prioritized_buckets(buckets):
             if not self._should_trigger(bucket, now):
                 continue
 
-            self._last_trigger_times[bucket] = now
+            with self._lock:
+                if self._active_behavior_bucket is not None:
+                    return
+                self._active_behavior_bucket = bucket
             self._append_log(f"Matched {bucket}; triggering behavior")
             self._behavior_thread = threading.Thread(target=self._run_behavior, args=(bucket,), daemon=True)
             self._behavior_thread.start()
