@@ -15,7 +15,7 @@ My robot Pi! This has been built with:
 ## Current Functionality
 
 - Flask-based webserver for PiCamera streaming and real-time WASD/button control  
-- Lower-latency MJPEG video streaming using `libcamera-vid` and a direct HTTP feed
+- Lower-latency MJPEG video streaming using Raspberry Pi camera apps and a direct HTTP feed
 - Graceful teardown of camera processes and cleanup on exit  
 - Automatic install/run via Makefile
 - Can be developed against without GPIO functionality (utilising a mocked import of GPIO)
@@ -86,7 +86,7 @@ make run
 
 This will:
 
-- Start `libcamera-vid` in the background
+- Start `rpicam-vid` on Bookworm, or fall back to `libcamera-vid` on older setups
 - Stream frames through a named pipe (`/tmp/vidstream.mjpeg`)
 - Serve the control interface via Flask + Socket.IO
 - Expose the camera at `/video_feed` as an MJPEG stream
@@ -150,7 +150,7 @@ make clean
 ## Developer Notes
 
 - Video is streamed over HTTP as MJPEG via `/video_feed`, which avoids the previous OpenCV re-encode and base64 WebSocket path
-- The camera feed is managed using `libcamera-vid`, started on demand and cleaned up by the Flask server
+- The camera feed is managed using `rpicam-vid` on Bookworm, falling back to `libcamera-vid` when available on older systems
 - Movement control is stateful rather than time-based: the browser sends `move_start` and `stop` Socket.IO events instead of repeated timed movement requests
 - The server binds to `0.0.0.0` and uses `FLASK_PORT` if set, otherwise port `5000`
 - Tests are organised by responsibility:
@@ -182,10 +182,10 @@ If the video feed does not appear:
 ls -l /tmp/vidstream.mjpeg
 ```
 
-4. Ensure no stale `libcamera-vid` processes are running:
+4. Ensure no stale camera processes are running:
 
 ```bash
-ps aux | grep libcamera-vid
+ps aux | grep -E 'rpicam-vid|libcamera-vid'
 ```
 
 If stuck, run:

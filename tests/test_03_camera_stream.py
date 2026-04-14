@@ -2,6 +2,40 @@ from io import BytesIO
 from unittest.mock import Mock
 
 
+def test_get_camera_command_prefers_rpicam_vid(monkeypatch, reload_module):
+    stream = reload_module("camera.stream")
+    monkeypatch.setattr(
+        stream,
+        "which",
+        lambda command: "/usr/bin/rpicam-vid" if command == "rpicam-vid" else None,
+    )
+
+    assert stream.get_camera_command() == "rpicam-vid"
+
+
+def test_get_camera_command_falls_back_to_libcamera_vid(monkeypatch, reload_module):
+    stream = reload_module("camera.stream")
+    monkeypatch.setattr(
+        stream,
+        "which",
+        lambda command: "/usr/bin/libcamera-vid" if command == "libcamera-vid" else None,
+    )
+
+    assert stream.get_camera_command() == "libcamera-vid"
+
+
+def test_get_camera_command_raises_when_no_camera_binary_exists(monkeypatch, reload_module):
+    stream = reload_module("camera.stream")
+    monkeypatch.setattr(stream, "which", lambda _: None)
+
+    try:
+        stream.get_camera_command()
+    except FileNotFoundError as exc:
+        assert "No supported camera command found" in str(exc)
+    else:
+        raise AssertionError("Expected FileNotFoundError when no camera binary exists")
+
+
 def test_cleanup_camera_terminates_process_and_removes_fifo(monkeypatch, reload_module):
     stream = reload_module("camera.stream")
     process = Mock()
@@ -28,13 +62,14 @@ def test_start_libcamera_stream_creates_fifo_and_starts_process(monkeypatch, rel
     monkeypatch.setattr(stream.os.path, "exists", lambda path: False)
     monkeypatch.setattr(stream.os, "mkfifo", mkfifo)
     monkeypatch.setattr(stream.subprocess, "Popen", popen)
+    monkeypatch.setattr(stream, "get_camera_command", lambda: "rpicam-vid")
 
     stream.start_libcamera_stream()
 
     mkfifo.assert_called_once_with(stream.FIFO_PATH)
     popen.assert_called_once_with(
         [
-            "libcamera-vid",
+            "rpicam-vid",
             "-t",
             "0",
             "--codec",

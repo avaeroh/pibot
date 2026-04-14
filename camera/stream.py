@@ -1,5 +1,6 @@
 import os
 import subprocess
+from shutil import which
 
 from utility.logger import log
 
@@ -15,11 +16,21 @@ QUALITY = int(os.getenv("LIBCAM_QUALITY", 85))
 ROTATION = int(os.getenv("LIBCAM_ROTATION", 180))
 
 
+def get_camera_command():
+    for command in ("rpicam-vid", "libcamera-vid"):
+        if which(command):
+            return command
+
+    raise FileNotFoundError(
+        "No supported camera command found. Install rpicam-vid or libcamera-vid."
+    )
+
+
 def cleanup_camera():
     global VIDEO_PROCESS
     log("Cleaning up camera...")
     if VIDEO_PROCESS and VIDEO_PROCESS.poll() is None:
-        log("Terminating libcamera-vid process")
+        log("Terminating camera process")
         VIDEO_PROCESS.terminate()
         VIDEO_PROCESS.wait()
     VIDEO_PROCESS = None
@@ -37,10 +48,11 @@ def start_libcamera_stream():
         log(f"Creating FIFO at {FIFO_PATH}")
         os.mkfifo(FIFO_PATH)
 
-    log(f"Starting libcamera-vid at {WIDTH}x{HEIGHT}, {FPS}fps, quality {QUALITY}")
+    camera_command = get_camera_command()
+    log(f"Starting {camera_command} at {WIDTH}x{HEIGHT}, {FPS}fps, quality {QUALITY}")
     VIDEO_PROCESS = subprocess.Popen(
         [
-            "libcamera-vid",
+            camera_command,
             "-t",
             "0",
             "--codec",
