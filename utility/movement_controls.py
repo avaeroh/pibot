@@ -1,5 +1,4 @@
 import os
-import time
 
 # Allows for mocking GPIO for testing on a pi that is connected to a monitor
 MOCK_GPIO = os.getenv("MOCK_GPIO", "false").lower() == "true"
@@ -33,36 +32,30 @@ if GPIO_AVAILABLE:
 else:
     print("@@@@@@ GPIO Not detected! Controls will be mocked @@@@@@")
 
-button_delay = float(os.getenv("BUTTON_DELAY", 0.2))
+def _set_outputs(active_pins):
+    Stop()
+    if not active_pins:
+        return
+
+    GPIO.output(active_pins, 1)
 
 def Stop():
     GPIO.output([pinMotorAForwards, pinMotorABackwards, pinMotorBForwards, pinMotorBBackwards], 0)
 
 def Forwards():
     print("Moving Forwards")
-    GPIO.output([pinMotorAForwards, pinMotorBForwards], 1)
-    time.sleep(button_delay)
-    Stop()
+    _set_outputs([pinMotorAForwards, pinMotorBForwards])
 
 def Backwards():
     print("Moving Backwards")
-    GPIO.output(pinMotorABackwards, 1)
-    GPIO.output(pinMotorBBackwards, 1)
-    time.sleep(button_delay)
-    Stop()
+    _set_outputs([pinMotorABackwards, pinMotorBBackwards])
 
 def Left():
     print("Turning Left")
-    GPIO.output(pinMotorAForwards, 1)
-    GPIO.output(pinMotorBBackwards, 1)
-    time.sleep(button_delay)
-    Stop()
+    _set_outputs([pinMotorAForwards, pinMotorBBackwards])
 
 def Right():
     print("Turning Right")
-    GPIO.output(pinMotorABackwards, 1)
-    GPIO.output(pinMotorBForwards, 1)
-    time.sleep(button_delay)
-    Stop()
+    _set_outputs([pinMotorABackwards, pinMotorBForwards])
 
 Stop()

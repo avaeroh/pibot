@@ -98,15 +98,35 @@
 
     <div class="controls">
         <div class="controls-row">
-            <button onclick="move('left')">⬅️ Left</button>
-            <button onclick="move('forwards')">⬆️ Forward</button>
-            <button onclick="move('right')">➡️ Right</button>
+            <button
+                onmousedown="handlePress('left')"
+                onmouseup="handleRelease()"
+                onmouseleave="handleRelease()"
+                ontouchstart="handlePress('left')"
+                ontouchend="handleRelease()">⬅️ Left</button>
+            <button
+                onmousedown="handlePress('forwards')"
+                onmouseup="handleRelease()"
+                onmouseleave="handleRelease()"
+                ontouchstart="handlePress('forwards')"
+                ontouchend="handleRelease()">⬆️ Forward</button>
+            <button
+                onmousedown="handlePress('right')"
+                onmouseup="handleRelease()"
+                onmouseleave="handleRelease()"
+                ontouchstart="handlePress('right')"
+                ontouchend="handleRelease()">➡️ Right</button>
         </div>
         <div class="controls-row">
-            <button onclick="move('backwards')">⬇️ Backward</button>
+            <button
+                onmousedown="handlePress('backwards')"
+                onmouseup="handleRelease()"
+                onmouseleave="handleRelease()"
+                ontouchstart="handlePress('backwards')"
+                ontouchend="handleRelease()">⬇️ Backward</button>
         </div>
         <div class="controls-row">
-            <button onclick="move('stop')">⏹️ Stop</button>
+            <button onclick="handleRelease()">⏹️ Stop</button>
         </div>
     </div>
 
@@ -119,6 +139,9 @@
         let retryActive = false;
         let connectionFailures = 0;
         let allowConnectionErrors = false;
+        let activeDirection = null;
+        const heldKeys = new Set();
+        const movementKeys = new Set(['w', 'a', 's', 'd']);
 
         setTimeout(() => {
             allowConnectionErrors = true;
@@ -168,18 +191,68 @@
             logOutput('Reconnected to video feed.');
         });
 
-        async function move(direction) {
-            const url = `/${direction}`;
+        function mapKeyToDirection(key) {
+            switch (key) {
+                case 'w': return 'forwards';
+                case 'a': return 'left';
+                case 's': return 'backwards';
+                case 'd': return 'right';
+                default: return null;
+            }
+        }
 
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
+        function getPriorityDirection() {
+            if (heldKeys.has('w')) return 'forwards';
+            if (heldKeys.has('s')) return 'backwards';
+            if (heldKeys.has('a')) return 'left';
+            if (heldKeys.has('d')) return 'right';
+            return null;
+        }
+
+        function startMove(direction) {
+            if (!direction || activeDirection === direction) {
+                return;
+            }
+
+            activeDirection = direction;
+            socket.emit('move_start', { direction }, function (response) {
+                if (response && response.message) {
+                    logOutput(`${new Date().toLocaleTimeString()}: ${response.message}`);
                 }
             });
+        }
 
-            const data = await response.json();
-            logOutput(`${new Date().toLocaleTimeString()}: ${data.message}`);
+        function stopMove() {
+            if (activeDirection === null) {
+                return;
+            }
+
+            activeDirection = null;
+            socket.emit('stop', function (response) {
+                if (response && response.message) {
+                    logOutput(`${new Date().toLocaleTimeString()}: ${response.message}`);
+                }
+            });
+        }
+
+        function syncMovementState() {
+            const nextDirection = getPriorityDirection();
+            if (!nextDirection) {
+                stopMove();
+                return;
+            }
+
+            startMove(nextDirection);
+        }
+
+        function handlePress(direction) {
+            heldKeys.clear();
+            startMove(direction);
+        }
+
+        function handleRelease() {
+            heldKeys.clear();
+            stopMove();
         }
 
         function logOutput(message) {
@@ -211,13 +284,43 @@
         }
 
         document.addEventListener('keydown', function (event) {
-            switch (event.key) {
-                case 'w': move('forwards'); break;
-                case 'a': move('left'); break;
-                case 's': move('backwards'); break;
-                case 'd': move('right'); break;
-                case ' ': move('stop'); break;
+            const key = event.key.toLowerCase();
+
+            if (key === ' ') {
+                event.preventDefault();
+                heldKeys.clear();
+                stopMove();
+                return;
             }
+
+            if (!movementKeys.has(key) || event.repeat) {
+                return;
+            }
+
+            event.preventDefault();
+            heldKeys.add(key);
+            syncMovementState();
+        });
+
+        document.addEventListener('keyup', function (event) {
+            const key = event.key.toLowerCase();
+            if (!movementKeys.has(key)) {
+                return;
+            }
+
+            event.preventDefault();
+            heldKeys.delete(key);
+            syncMovementState();
+        });
+
+        window.addEventListener('blur', function () {
+            heldKeys.clear();
+            stopMove();
+        });
+
+        window.addEventListener('beforeunload', function () {
+            heldKeys.clear();
+            stopMove();
         });
     </script>
 </body>

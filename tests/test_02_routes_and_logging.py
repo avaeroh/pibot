@@ -102,3 +102,43 @@ def test_socket_connect_starts_streaming(monkeypatch, reload_modules):
     server.handle_connect()
 
     start_streaming.assert_called_once_with(server.socketio)
+
+
+def test_move_start_event_calls_matching_movement_control(monkeypatch, reload_modules):
+    _, server = reload_modules("control.app_instance", "control.server")
+    forwards = Mock()
+    monkeypatch.setattr(server, "Forwards", forwards)
+
+    response = server.handle_move_start({"direction": "forwards"})
+
+    forwards.assert_called_once_with()
+    assert response == {"status": "ok", "message": "Moving forwards"}
+
+
+def test_move_start_event_rejects_unknown_direction(reload_modules):
+    _, server = reload_modules("control.app_instance", "control.server")
+
+    response = server.handle_move_start({"direction": "spin"})
+
+    assert response == {"status": "error", "message": "Unknown direction"}
+
+
+def test_stop_event_calls_stop_control(monkeypatch, reload_modules):
+    _, server = reload_modules("control.app_instance", "control.server")
+    stop = Mock()
+    monkeypatch.setattr(server, "Stop", stop)
+
+    response = server.handle_stop()
+
+    stop.assert_called_once_with()
+    assert response == {"status": "ok", "message": "Stopped"}
+
+
+def test_disconnect_stops_robot(monkeypatch, reload_modules):
+    _, server = reload_modules("control.app_instance", "control.server")
+    stop = Mock()
+    monkeypatch.setattr(server, "Stop", stop)
+
+    server.handle_disconnect()
+
+    stop.assert_called_once_with()

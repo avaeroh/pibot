@@ -14,12 +14,13 @@ My robot Pi! This has been built with:
 
 ## Current Functionality
 
-- Flask-based webserver for PiCamera streaming and WASD/button control  
+- Flask-based webserver for PiCamera streaming and real-time WASD/button control  
 - Real-time video streaming using `libcamera-vid` 
 - Graceful teardown of camera processes and cleanup on exit  
 - Automatic install/run via Makefile
 - Can be developed against without GPIO functionality (utilising a mocked import of GPIO)
-- Readable `pytest` suite covering movement controls, routes/logging, and camera lifecycle behaviour
+- Hold-to-move control flow over Socket.IO with explicit stop on key release, disconnect, or browser blur
+- Readable `pytest` suite covering movement controls, routes/logging, Socket.IO control events, and camera lifecycle behaviour
 
 ---
 
@@ -40,7 +41,6 @@ My robot Pi! This has been built with:
 
 ```env
 PYTHONUNBUFFERED=1
-BUTTON_DELAY=0.2
 FLASK_PORT=5000
 LIBCAM_FPS=10
 LIBCAM_QUALITY=85
@@ -86,8 +86,15 @@ This will:
 
 - Start `libcamera-vid` in the background
 - Stream frames through a named pipe (`/tmp/vidstream.mjpeg`)
-- Serve the control interface via Flask + WebSocket
+- Serve the control interface via Flask + Socket.IO
 - Expose logs via `/logs` for debugging
+
+Keyboard controls:
+
+- Hold `W`, `A`, `S`, or `D` to keep the robot moving
+- Release the key to stop
+- Press `Space` to force an immediate stop
+- If the browser loses focus or disconnects, the robot is told to stop as a safety fallback
 
 ---
 
@@ -113,6 +120,7 @@ make clean
 
 - All video is streamed over WebSocket using base64 JPEG frames  
 - The camera feed is managed using `libcamera-vid`, started and cleaned up by the Flask server  
+- Movement control is stateful rather than time-based: the browser sends `move_start` and `stop` Socket.IO events instead of repeated timed movement requests
 - Tests are organised by responsibility:
   - `tests/test_01_movement_controls.py`
   - `tests/test_02_routes_and_logging.py`
