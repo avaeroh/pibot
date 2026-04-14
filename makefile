@@ -4,7 +4,7 @@ VENV_DIR := .venv
 MODEL_DIR := models
 FIFO_PATH := /tmp/vidstream.mjpeg
 
-all: setup install-deps install-python-deps
+all: setup install-deps install-python-deps install-independent-python-deps
 
 setup:
 	@echo "[Setup] Creating app directory structure"

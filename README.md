@@ -71,15 +71,9 @@ The app loads `.env` automatically on startup.
 make all
 ```
 
-Installs system tools, Python packages, and prepares folders.
+Installs system tools, the base Python packages, the independent-mode TensorFlow Lite packages, and prepares folders.
 
 If you are developing off-device, the Python dependencies are still enough to run the test suite locally. Pi-specific hardware access is mocked in tests.
-
-If you want to run `independent` mode, also install the TensorFlow Lite packages:
-
-```bash
-make install-independent-python-deps
-```
 
 ---
 
