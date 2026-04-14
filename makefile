@@ -1,10 +1,19 @@
-.PHONY: all setup install-deps install-python-deps install-independent-python-deps download-models run run-control run-independent test clean setup-pipe stream kill-camera
+.PHONY: all setup install-deps install-python39-build-deps install-python39 bootstrap-independent install-control-python-deps install-independent-python-deps install-control install-independent download-models run run-control run-independent test clean setup-pipe stream kill-camera
 
-VENV_DIR := .venv
+VENV_CONTROL := .venv-control
+VENV_INDEPENDENT := .venv-independent
+VENV_LEGACY := .venv
+PYTHON39 ?= python3.9
 MODEL_DIR := models
 FIFO_PATH := /tmp/vidstream.mjpeg
 
-all: setup install-deps install-python-deps install-independent-python-deps
+ifeq ($(wildcard $(VENV_CONTROL)/bin/python),)
+CONTROL_PYTHON := $(VENV_LEGACY)/bin/python
+else
+CONTROL_PYTHON := $(VENV_CONTROL)/bin/python
+endif
+
+all: setup install-deps install-control install-independent
 
 setup:
 	@echo "[Setup] Creating app directory structure"
@@ -31,22 +40,62 @@ install-deps:
 	@echo "[System] Cleaning up apt"
 	sudo apt-get clean
 
-install-python-deps:
-	@echo "[Python] Checking for existing virtual environment"
-	@if [ ! -d "$(VENV_DIR)" ]; then \
-		echo "[Python] Creating virtual environment in $(VENV_DIR)"; \
-		python3 -m venv $(VENV_DIR); \
+install-python39-build-deps:
+	@echo "[System] Installing build dependencies for Python 3.9 via pyenv"
+	sudo apt-get update
+	sudo apt-get install -y \
+		build-essential curl git \
+		libssl-dev zlib1g-dev libbz2-dev \
+		libreadline-dev libsqlite3-dev libncursesw5-dev \
+		xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+
+install-python39:
+	@echo "[Python] Installing Python 3.9 via pyenv (opt-in bootstrap)"
+	@command -v git >/dev/null 2>&1 || (echo "[Python] git is required for pyenv bootstrap." && exit 1)
+	@if [ ! -d "$$HOME/.pyenv" ]; then \
+		echo "[Python] Cloning pyenv into $$HOME/.pyenv"; \
+		git clone https://github.com/pyenv/pyenv.git $$HOME/.pyenv; \
 	else \
-		echo "[Python] Virtual environment already exists"; \
+		echo "[Python] pyenv already exists at $$HOME/.pyenv"; \
+	fi
+	@PYENV_ROOT="$$HOME/.pyenv" PATH="$$HOME/.pyenv/bin:$$PATH" pyenv install -s 3.9.19
+	@echo "[Python] Python 3.9 installed at $$HOME/.pyenv/versions/3.9.19/bin/python3.9"
+
+bootstrap-independent: install-python39-build-deps install-python39
+	@echo "[Python] Bootstrapping independent mode with pyenv-managed Python 3.9"
+	$(MAKE) install-independent PYTHON39=$$HOME/.pyenv/versions/3.9.19/bin/python3.9
+
+install-control-python-deps:
+	@echo "[Python] Checking for existing control virtual environment"
+	@if [ ! -d "$(VENV_CONTROL)" ]; then \
+		echo "[Python] Creating control virtual environment in $(VENV_CONTROL)"; \
+		python3 -m venv $(VENV_CONTROL); \
+	else \
+		echo "[Python] Control virtual environment already exists"; \
 	fi
 
-	@echo "[Python] Installing dependencies"
-	$(VENV_DIR)/bin/pip install --upgrade pip
-	$(VENV_DIR)/bin/pip install -r requirements.txt
+	@echo "[Python] Installing control-mode dependencies"
+	$(VENV_CONTROL)/bin/pip install --upgrade pip
+	$(VENV_CONTROL)/bin/pip install -r requirements.txt
 
 install-independent-python-deps:
-	@echo "[Python] Installing independent mode dependencies"
-	$(VENV_DIR)/bin/pip install -r tflite/requirements.txt
+	@echo "[Python] Checking for existing independent virtual environment"
+	@command -v $(PYTHON39) >/dev/null 2>&1 || (echo "[Python] Could not find $(PYTHON39). Install Python 3.9 first or run 'make install-independent PYTHON39=/path/to/python3.9'." && exit 1)
+	@if [ ! -d "$(VENV_INDEPENDENT)" ]; then \
+		echo "[Python] Creating independent virtual environment in $(VENV_INDEPENDENT)"; \
+		$(PYTHON39) -m venv $(VENV_INDEPENDENT); \
+	else \
+		echo "[Python] Independent virtual environment already exists"; \
+	fi
+
+	@echo "[Python] Installing independent-mode dependencies"
+	$(VENV_INDEPENDENT)/bin/pip install --upgrade pip
+	$(VENV_INDEPENDENT)/bin/pip install -r requirements.txt
+	$(VENV_INDEPENDENT)/bin/pip install -r tflite/requirements.txt
+
+install-control: install-control-python-deps
+
+install-independent: install-independent-python-deps
 
 download-models:
 	@echo "[Model] Downloading TensorFlow Lite models"
@@ -54,20 +103,20 @@ download-models:
 	curl -L 'https://storage.googleapis.com/download.tensorflow.org/models/tflite/task_library/object_detection/rpi/efficientdet_lite0_edgetpu_metadata.tflite' -o $(MODEL_DIR)/efficientdet_lite0_edgetpu.tflite
 
 run:
-	@echo "[Run] Starting application"
-	PYTHONUNBUFFERED=1 PYTHONPATH=$(PWD) $(VENV_DIR)/bin/python main.py
+	@echo "[Run] Starting application with control environment"
+	PYTHONUNBUFFERED=1 PYTHONPATH=$(PWD) $(CONTROL_PYTHON) main.py
 
 run-control:
 	@echo "[Run] Starting pibot in control mode"
-	PYTHONUNBUFFERED=1 PYTHONPATH=$(PWD) PIBOT_MODE=control $(VENV_DIR)/bin/python main.py
+	PYTHONUNBUFFERED=1 PYTHONPATH=$(PWD) PIBOT_MODE=control $(CONTROL_PYTHON) main.py
 
 run-independent:
 	@echo "[Run] Starting pibot in independent mode"
-	PYTHONUNBUFFERED=1 PYTHONPATH=$(PWD) PIBOT_MODE=independent $(VENV_DIR)/bin/python main.py
+	PYTHONUNBUFFERED=1 PYTHONPATH=$(PWD) PIBOT_MODE=independent $(VENV_INDEPENDENT)/bin/python main.py
 
 test:
 	@echo "[Test] Running test suite with mocked Pi hardware"
-	PYTHONPATH=$(PWD) MOCK_GPIO=true PYTHONPYCACHEPREFIX=/tmp/pycache $(VENV_DIR)/bin/python -m pytest
+	PYTHONPATH=$(PWD) MOCK_GPIO=true PYTHONPYCACHEPREFIX=/tmp/pycache $(CONTROL_PYTHON) -m pytest
 
 setup-pipe:
 	@echo "[Pipe] Creating video stream FIFO if missing"

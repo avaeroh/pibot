@@ -38,6 +38,11 @@ My robot Pi! This has been built with:
 - `make` cli binary
 - Network access to the Pi from a browser
 
+Independent mode note:
+
+- `control` mode uses the normal project environment
+- `independent` mode uses a separate Python 3.9 environment on Raspberry Pi Linux `aarch64` because of upstream `tflite-support` wheel availability
+
 ---
 
 ## Setup & Usage
@@ -71,9 +76,61 @@ The app loads `.env` automatically on startup.
 make all
 ```
 
-Installs system tools, the base Python packages, the independent-mode TensorFlow Lite packages, and prepares folders.
+Installs system tools, prepares folders, creates both virtual environments, installs the control-mode dependencies into `.venv-control`, and installs the independent-mode stack into `.venv-independent`.
 
 If you are developing off-device, the Python dependencies are still enough to run the test suite locally. Pi-specific hardware access is mocked in tests.
+
+Split environment summary:
+
+- `.venv-control` -> control mode and tests
+- `.venv-independent` -> independent mode and TensorFlow Lite
+
+You can also install them separately:
+
+```bash
+make install-control
+make install-independent
+make bootstrap-independent
+```
+
+Independent-mode prerequisites on Raspberry Pi OS Bookworm:
+
+1. Install the normal system packages first:
+
+```bash
+make install-deps
+```
+
+2. Use the opt-in bootstrap target:
+
+```bash
+make bootstrap-independent
+```
+
+This will:
+
+- install the Linux build prerequisites for Python 3.9
+- install `pyenv` into `~/.pyenv` if it is missing
+- build Python `3.9.19`
+- install the independent-mode environment into `.venv-independent`
+
+3. Confirm that the independent environment is now on Python 3.9:
+
+```bash
+.venv-independent/bin/python --version
+```
+
+4. If you already have your own Python 3.9 interpreter and do not want the bootstrap path, you can still install directly:
+
+```bash
+make install-independent
+```
+
+If your Python 3.9 binary lives somewhere non-standard, point Make at it explicitly:
+
+```bash
+make install-independent PYTHON39=/path/to/python3.9
+```
 
 ---
 
@@ -85,7 +142,7 @@ make test
 
 This will:
 
-- Run the `pytest` suite from the local virtual environment
+- Run the `pytest` suite from `.venv-control`
 - Force `MOCK_GPIO=true` so motor controls can be exercised safely off-device
 - Validate the Flask routes, mode routing, log buffers, movement helpers, camera stream lifecycle, and independent-mode bucket logic
 
@@ -124,6 +181,11 @@ This will:
 - Serve the mode-specific interface from `/`
 - Expose logs via `/logs` for debugging
 - Expose the active camera feed as MJPEG over HTTP
+
+Runtime environments:
+
+- `make run` and `make run-control` use `.venv-control`
+- `make run-independent` uses `.venv-independent`
 
 Mode summary:
 
@@ -207,6 +269,7 @@ make clean
 - The camera feed is managed using `rpicam-vid` on Bookworm, falling back to `libcamera-vid` when available on older systems
 - Movement control is stateful rather than time-based: the browser sends `move_start` and `stop` Socket.IO events instead of repeated timed movement requests
 - Independent mode uses a throttled TensorFlow Lite detection loop and keeps the annotated JPEG feed in memory for browser clients
+- Independent mode currently depends on `tflite-support==0.4.4`, which is why it runs from the separate Python 3.9 `.venv-independent` environment on Raspberry Pi `aarch64`
 - The current independent-mode buckets are intentionally lightweight:
   - `people` -> any `person` detection
   - `cat` -> any `cat` detection
@@ -260,10 +323,24 @@ ls -l models/efficientdet_lite0.tflite
 2. Confirm the TFLite dependencies are installed:
 
 ```bash
-.venv/bin/pip show tflite-support
+.venv-independent/bin/pip show tflite-support
 ```
 
-3. Open `/independent/logs` in the browser for the independent-mode error messages
+3. Check the Python version in your virtual environment:
+
+```bash
+.venv-independent/bin/python --version
+```
+
+Independent mode currently expects Python 3.9 there.
+
+4. If `python3.9` is not on your shell path, reinstall with an explicit interpreter:
+
+```bash
+make install-independent PYTHON39=/path/to/python3.9
+```
+
+5. Open `/independent/logs` in the browser for the independent-mode error messages
 
 If stuck, run:
 
