@@ -52,7 +52,6 @@ Independent mode note:
 ```env
 PYTHONUNBUFFERED=1
 FLASK_PORT=5000
-PIBOT_MODE=control
 LIBCAM_FPS=10
 LIBCAM_QUALITY=85
 LIBCAM_ROTATION=180 # Depending on which way up your camera is
@@ -79,6 +78,8 @@ make all
 Installs system tools, prepares folders, creates both virtual environments, installs the control-mode dependencies into `.venv-control`, and installs the independent-mode stack into `.venv-independent`.
 
 If you are developing off-device, the Python dependencies are still enough to run the test suite locally. Pi-specific hardware access is mocked in tests.
+
+On a fresh Raspberry Pi OS Bookworm machine, `make all` may still stop at the independent-mode step until Python 3.9 is available. In that case, use the explicit bootstrap flow below and then rerun `make install-independent` if needed.
 
 Split environment summary:
 
@@ -162,7 +163,7 @@ This is required for `independent` mode unless you provide your own model path v
 
 ### 5. Run the pibot webserver
 
-The default `run` target respects `PIBOT_MODE` from your environment or `.env`.
+The default `run` target starts `control` mode with the control environment.
 
 ```bash
 make run
@@ -184,7 +185,7 @@ This will:
 
 Runtime environments:
 
-- `make run` and `make run-control` use `.venv-control`
+- `make run` and `make run-control` use `.venv-control` and force `control` mode
 - `make run-independent` uses `.venv-independent`
 
 Mode summary:

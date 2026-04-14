@@ -104,7 +104,7 @@ download-models:
 
 run:
 	@echo "[Run] Starting application with control environment"
-	PYTHONUNBUFFERED=1 PYTHONPATH=$(PWD) $(CONTROL_PYTHON) main.py
+	PYTHONUNBUFFERED=1 PYTHONPATH=$(PWD) PIBOT_MODE=control $(CONTROL_PYTHON) main.py
 
 run-control:
 	@echo "[Run] Starting pibot in control mode"
