@@ -1,4 +1,4 @@
-.PHONY: all setup install-deps install-python-deps download-models run test clean setup-pipe stream kill-camera
+.PHONY: all setup install-deps install-python-deps install-independent-python-deps download-models run run-control run-independent test clean setup-pipe stream kill-camera
 
 VENV_DIR := .venv
 MODEL_DIR := models
@@ -44,6 +44,10 @@ install-python-deps:
 	$(VENV_DIR)/bin/pip install --upgrade pip
 	$(VENV_DIR)/bin/pip install -r requirements.txt
 
+install-independent-python-deps:
+	@echo "[Python] Installing independent mode dependencies"
+	$(VENV_DIR)/bin/pip install -r tflite/requirements.txt
+
 download-models:
 	@echo "[Model] Downloading TensorFlow Lite models"
 	curl -L 'https://storage.googleapis.com/download.tensorflow.org/models/tflite/task_library/object_detection/rpi/lite-model_efficientdet_lite0_detection_metadata_1.tflite' -o $(MODEL_DIR)/efficientdet_lite0.tflite
@@ -52,6 +56,14 @@ download-models:
 run:
 	@echo "[Run] Starting application"
 	PYTHONUNBUFFERED=1 PYTHONPATH=$(PWD) $(VENV_DIR)/bin/python main.py
+
+run-control:
+	@echo "[Run] Starting pibot in control mode"
+	PYTHONUNBUFFERED=1 PYTHONPATH=$(PWD) PIBOT_MODE=control $(VENV_DIR)/bin/python main.py
+
+run-independent:
+	@echo "[Run] Starting pibot in independent mode"
+	PYTHONUNBUFFERED=1 PYTHONPATH=$(PWD) PIBOT_MODE=independent $(VENV_DIR)/bin/python main.py
 
 test:
 	@echo "[Test] Running test suite with mocked Pi hardware"
@@ -67,12 +79,16 @@ setup-pipe:
 	fi
 
 stream:
-	@echo "[Stream] Starting libcamera-vid"
-	libcamera-vid -t 0 --inline --width 640 --height 480 -o $(FIFO_PATH)
+	@echo "[Stream] Starting Raspberry Pi camera stream"
+	@if command -v rpicam-vid >/dev/null 2>&1; then \
+		rpicam-vid -t 0 --codec mjpeg --inline --width 640 --height 480 -o $(FIFO_PATH); \
+	else \
+		libcamera-vid -t 0 --codec mjpeg --inline --width 640 --height 480 -o $(FIFO_PATH); \
+	fi
 
 kill-camera:
-	@echo "[Cleanup] Killing all libcamera-vid processes"
-	-pkill -f libcamera-vid || true
+	@echo "[Cleanup] Killing all camera streaming processes"
+	-pkill -f 'rpicam-vid|libcamera-vid' || true
 
 clean:
 	@echo "[Clean] Removing model files and FIFO"

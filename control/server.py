@@ -1,10 +1,11 @@
 from control.app_instance import app, socketio
-from flask import Response
+from flask import Response, jsonify
 import signal
 import atexit
 from utility.logger import setup_logging, log
 from control import movement_routes
 from camera.stream import generate_mjpeg_stream, cleanup_camera
+from independent.service import independent_mode_service
 from utility.movement_controls import Forwards, Backwards, Left, Right, Stop
 
 setup_logging(app)
@@ -12,11 +13,13 @@ setup_logging(app)
 def handle_exit(sig, frame):
     log(f"Received signal {sig}, exiting.")
     cleanup_camera()
+    independent_mode_service.cleanup()
     exit(0)
 
 signal.signal(signal.SIGINT, handle_exit)
 signal.signal(signal.SIGTERM, handle_exit)
 atexit.register(cleanup_camera)
+atexit.register(independent_mode_service.cleanup)
 
 @socketio.on('connect')
 def handle_connect():
@@ -62,3 +65,16 @@ def video_feed():
         generate_mjpeg_stream(),
         mimetype='multipart/x-mixed-replace; boundary=frame',
     )
+
+
+@app.route('/independent/video_feed')
+def independent_video_feed():
+    return Response(
+        independent_mode_service.stream_frames(),
+        mimetype='multipart/x-mixed-replace; boundary=frame',
+    )
+
+
+@app.route('/independent/logs')
+def independent_logs():
+    return jsonify(independent_mode_service.get_log_entries())

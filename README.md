@@ -14,13 +14,18 @@ My robot Pi! This has been built with:
 
 ## Current Functionality
 
+- Two browser-accessible run modes: `control` and `independent`
 - Flask-based webserver for PiCamera streaming and real-time WASD/button control  
 - Lower-latency MJPEG video streaming using Raspberry Pi camera apps and a direct HTTP feed
 - Graceful teardown of camera processes and cleanup on exit  
-- Automatic install/run via Makefile
+- Automatic install/run via Makefile targets for each mode
 - Can be developed against without GPIO functionality (utilising a mocked import of GPIO)
 - Hold-to-move control flow over Socket.IO with explicit stop on key release, disconnect, or browser blur
-- Readable `pytest` suite covering movement controls, routes/logging, Socket.IO control events, and camera lifecycle/stream parsing behaviour
+- Independent mode powered by TensorFlow Lite object detection buckets for `people` and `cat`
+- Independent mode behaviour hooks:
+  - `cat` -> 360 spin
+  - `people` -> wiggle routine
+- Readable `pytest` suite covering movement controls, routes/logging, mode routing, Socket.IO control events, camera lifecycle/stream parsing, and independent-mode detection logic
 
 ---
 
@@ -42,10 +47,18 @@ My robot Pi! This has been built with:
 ```env
 PYTHONUNBUFFERED=1
 FLASK_PORT=5000
+PIBOT_MODE=control
 LIBCAM_FPS=10
 LIBCAM_QUALITY=85
 LIBCAM_ROTATION=180 # Depending on which way up your camera is
 MOCK_GPIO=true # If you are developing on a PI with a GPIO and you don't want to move the motors while debugging
+TFLITE_MODEL=models/efficientdet_lite0.tflite
+INDEPENDENT_FPS=6
+INDEPENDENT_QUALITY=70
+TFLITE_DETECTION_INTERVAL=0.4
+SPIN_360_SECONDS=0.95
+WIGGLE_TURN_SECONDS=0.12
+WIGGLE_MOVE_SECONDS=0.15
 ```
 
 The app loads `.env` automatically on startup.
@@ -62,6 +75,12 @@ Installs system tools, Python packages, and prepares folders.
 
 If you are developing off-device, the Python dependencies are still enough to run the test suite locally. Pi-specific hardware access is mocked in tests.
 
+If you want to run `independent` mode, also install the TensorFlow Lite packages:
+
+```bash
+make install-independent-python-deps
+```
+
 ---
 
 ### 3. Run the test suite
@@ -74,25 +93,59 @@ This will:
 
 - Run the `pytest` suite from the local virtual environment
 - Force `MOCK_GPIO=true` so motor controls can be exercised safely off-device
-- Validate the Flask routes, log buffer, movement helpers, and mocked camera stream lifecycle
+- Validate the Flask routes, mode routing, log buffers, movement helpers, camera stream lifecycle, and independent-mode bucket logic
 
 ---
 
-### 4. Run the pibot webserver
+### 4. (Optional) Download TensorFlow Lite models
+
+```bash
+make download-models
+```
+
+Places `.tflite` files in the `models/` folder.
+
+This is required for `independent` mode unless you provide your own model path via `TFLITE_MODEL`.
+
+---
+
+### 5. Run the pibot webserver
+
+The default `run` target respects `PIBOT_MODE` from your environment or `.env`.
 
 ```bash
 make run
 ```
 
+You can also start a mode explicitly:
+
+```bash
+make run-control
+make run-independent
+```
+
 This will:
 
 - Start `rpicam-vid` on Bookworm, or fall back to `libcamera-vid` on older setups
-- Stream frames through a named pipe (`/tmp/vidstream.mjpeg`)
-- Serve the control interface via Flask + Socket.IO
-- Expose the camera at `/video_feed` as an MJPEG stream
+- Serve the mode-specific interface from `/`
 - Expose logs via `/logs` for debugging
+- Expose the active camera feed as MJPEG over HTTP
 
-### 5. Open the control page from another device
+Mode summary:
+
+- `control` mode:
+  - root page `/` serves the manual control UI
+  - video feed is served at `/video_feed`
+  - movement is driven by browser input over Socket.IO
+- `independent` mode:
+  - root page `/` serves the TFLite monitoring UI
+  - annotated detection feed is served at `/independent/video_feed`
+  - browser log is available at `/independent/logs`
+  - detections are bucketed into `people` and `cat`
+  - `cat` triggers a 360 spin
+  - `people` triggers a wiggle routine
+
+### 6. Open the pibot page from another device
 
 Find the Pi's LAN IP on the Pi:
 
@@ -113,13 +166,17 @@ Examples:
 
 Useful routes:
 
-- `/` - main control page served from `static/index.html`
-- `/video_feed` - raw MJPEG camera stream
+- `/` - page for the currently selected mode
+- `/control` - manual control page
+- `/independent` - TFLite independent-mode page
+- `/video_feed` - raw control-mode camera stream
+- `/independent/video_feed` - annotated independent-mode feed
+- `/independent/logs` - independent-mode detection and behaviour log
 - `/logs` - recent server logs for debugging
 
-### 6. Drive the robot
+### 7. Use control mode
 
-Once the page is open:
+Open `/control`, or run the app with `PIBOT_MODE=control` and open `/`.
 
 - Hold `W`, `A`, `S`, or `D` to keep the robot moving
 - Release the key to stop
@@ -129,17 +186,20 @@ Once the page is open:
 
 ---
 
-### 7. (Optional) Download TensorFlow Lite models
+### 8. Use independent mode
 
-```bash
-make download-models
-```
+Open `/independent`, or run the app with `PIBOT_MODE=independent` and open `/`.
 
-Places `.tflite` files in the `models/` folder.
+- The camera feed is annotated in the browser with TFLite detections
+- A browser log shows matches and triggered behaviours
+- `people` currently means any detected `person`
+- `cat` currently means any detected `cat`
+- Detections are throttled with `TFLITE_DETECTION_INTERVAL` and a lower default FPS to stay friendlier to a Raspberry Pi 4
+- Behaviour execution is cooldown-limited so repeated detections do not spam motion commands
 
 ---
 
-### 8. Clean up (including FIFO and models)
+### 9. Clean up (including FIFO and models)
 
 ```bash
 make clean
@@ -152,21 +212,28 @@ make clean
 - Video is streamed over HTTP as MJPEG via `/video_feed`, which avoids the previous OpenCV re-encode and base64 WebSocket path
 - The camera feed is managed using `rpicam-vid` on Bookworm, falling back to `libcamera-vid` when available on older systems
 - Movement control is stateful rather than time-based: the browser sends `move_start` and `stop` Socket.IO events instead of repeated timed movement requests
+- Independent mode uses a throttled TensorFlow Lite detection loop and keeps the annotated JPEG feed in memory for browser clients
+- The current independent-mode buckets are intentionally lightweight:
+  - `people` -> any `person` detection
+  - `cat` -> any `cat` detection
+- The current behaviours are best-effort time-based motor routines, not encoder-verified precise motion
 - The server binds to `0.0.0.0` and uses `FLASK_PORT` if set, otherwise port `5000`
-- Tests are organised by responsibility:
-  - `tests/test_01_movement_controls.py`
-  - `tests/test_02_routes_and_logging.py`
-  - `tests/test_03_camera_stream.py`
-- Tests are designed to run away from the Raspberry Pi by mocking GPIO access and camera/process interactions
+- Static pages are organised by mode:
+  - `static/control-mode.html`
+  - `static/independent-mode.html`
+- Tests are organised by mode:
+  - `tests/control/test_control_mode.py`
+  - `tests/control/test_control_stream.py`
+  - `tests/independent/test_independent_mode.py`
+- Tests are designed to run away from the Raspberry Pi by mocking GPIO access, camera/process interactions, and TFLite-dependent pieces
 - Logs are stored in a ring buffer and accessible at:
 
 ```
 http://<your-pi-ip>:5000/logs
 ```
 
-- If the video feed fails, the browser will automatically display the last 50 server logs
-- A `Thread` is used to stream frames from OpenCV
-- The named pipe (`/tmp/vidstream.mjpeg`) is created and destroyed automatically
+- If the independent-mode feed fails, the browser log will surface the detection-service errors from `/independent/logs`
+- Control mode uses a FIFO-backed camera stream; independent mode uses a background detection worker and an annotated MJPEG stream
 
 ---
 
@@ -188,6 +255,22 @@ ls -l /tmp/vidstream.mjpeg
 ps aux | grep -E 'rpicam-vid|libcamera-vid'
 ```
 
+If independent mode does not start:
+
+1. Confirm the model exists:
+
+```bash
+ls -l models/efficientdet_lite0.tflite
+```
+
+2. Confirm the TFLite dependencies are installed:
+
+```bash
+.venv/bin/pip show tflite-support
+```
+
+3. Open `/independent/logs` in the browser for the independent-mode error messages
+
 If stuck, run:
 
 ```bash
@@ -200,4 +283,5 @@ make run
 ## TODO
 
 - Improve frontend with camera status indicator & quality
-- add object detection & non-user driven behaviour
+- Add configurable object buckets beyond `people` and `cat`
+- Add richer independent-mode behaviours

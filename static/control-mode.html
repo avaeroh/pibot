@@ -87,11 +87,28 @@
             flex: 1;
             margin: 5px;
         }
+
+        .mode-links {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 12px;
+        }
+
+        .mode-links a {
+            color: #0b5cab;
+            text-decoration: none;
+            font-weight: bold;
+        }
     </style>
 </head>
 
 <body>
     <h1>Pibot Movement Controls</h1>
+    <div class="mode-links">
+        <a href="/control">Control Mode</a>
+        <a href="/independent">Independent Mode</a>
+    </div>
 
     <div id="spinner"></div>
     <img id="video" src="/video_feed" alt="Video feed unavailable">

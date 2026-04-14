@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pibot Independent Mode</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            color: #1c2733;
+        }
+
+        .page {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 24px 16px 40px;
+        }
+
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .mode-links {
+            display: flex;
+            gap: 12px;
+        }
+
+        .mode-links a {
+            text-decoration: none;
+            color: #0b5cab;
+            font-weight: bold;
+        }
+
+        .status {
+            background: #dff5e8;
+            color: #0b6b3a;
+            border-radius: 999px;
+            padding: 8px 12px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .content {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 16px;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(16, 24, 40, 0.08);
+            padding: 16px;
+        }
+
+        #video {
+            width: 100%;
+            border-radius: 12px;
+            background: #111;
+        }
+
+        #log-output {
+            height: 420px;
+            overflow-y: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+            background: #0f1720;
+            color: #d7e3f4;
+            border-radius: 12px;
+            padding: 12px;
+        }
+
+        .note {
+            margin-top: 12px;
+            color: #52606d;
+            line-height: 1.5;
+        }
+
+        @media (max-width: 800px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+
+            #log-output {
+                height: 220px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="page">
+        <div class="topbar">
+            <div>
+                <h1>Pibot Independent Mode</h1>
+                <p>Watching for people and cats with TFLite, then triggering robot behaviours.</p>
+            </div>
+            <div class="mode-links">
+                <a href="/control">Control Mode</a>
+                <a href="/independent">Independent Mode</a>
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="panel">
+                <div class="status">Live TFLite Feed</div>
+                <img id="video" src="/independent/video_feed" alt="Independent mode detection feed" />
+                <p class="note">The overlay highlights detections and shows bucket matches for <strong>people</strong> and <strong>cat</strong>.</p>
+            </div>
+
+            <div class="panel">
+                <div class="status">Detection Log</div>
+                <div id="log-output">Waiting for detections...</div>
+                <p class="note">This panel refreshes automatically so you can see matches and triggered behaviours from the browser.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const logOutput = document.getElementById('log-output');
+        const video = document.getElementById('video');
+
+        function renderLogs(lines) {
+            if (!lines.length) {
+                logOutput.textContent = 'Waiting for detections...';
+                return;
+            }
+
+            logOutput.textContent = lines.join('\n');
+            logOutput.scrollTop = logOutput.scrollHeight;
+        }
+
+        async function refreshLogs() {
+            try {
+                const response = await fetch('/independent/logs');
+                const data = await response.json();
+                renderLogs(data);
+            } catch (error) {
+                logOutput.textContent = `Failed to load independent-mode logs: ${error}`;
+            }
+        }
+
+        video.addEventListener('error', refreshLogs);
+
+        refreshLogs();
+        setInterval(refreshLogs, 2000);
+    </script>
+</body>
+
+</html>
