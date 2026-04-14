@@ -1,4 +1,131 @@
-from unittest.mock import Mock
+from unittest.mock import Mock, call
+
+
+def test_import_uses_mock_gpio_when_enabled(reload_module):
+    movement_controls = reload_module("utility.movement_controls")
+
+    assert movement_controls.GPIO_AVAILABLE is False
+
+
+def test_stop_turns_all_motor_pins_off(reload_module):
+    movement_controls = reload_module("utility.movement_controls")
+    movement_controls.GPIO.reset_mock()
+
+    movement_controls.Stop()
+
+    movement_controls.GPIO.output.assert_called_once_with(
+        [
+            movement_controls.pinMotorAForwards,
+            movement_controls.pinMotorABackwards,
+            movement_controls.pinMotorBForwards,
+            movement_controls.pinMotorBBackwards,
+        ],
+        0,
+    )
+
+
+def test_forwards_sets_forward_pins_after_clearing_previous_state(reload_module):
+    movement_controls = reload_module("utility.movement_controls")
+    movement_controls.GPIO.reset_mock()
+
+    movement_controls.Forwards()
+
+    assert movement_controls.GPIO.output.call_args_list == [
+        call(
+            [
+                movement_controls.pinMotorAForwards,
+                movement_controls.pinMotorABackwards,
+                movement_controls.pinMotorBForwards,
+                movement_controls.pinMotorBBackwards,
+            ],
+            0,
+        ),
+        call(
+            [
+                movement_controls.pinMotorAForwards,
+                movement_controls.pinMotorBForwards,
+            ],
+            1,
+        ),
+    ]
+
+
+def test_backwards_sets_reverse_pins_after_clearing_previous_state(reload_module):
+    movement_controls = reload_module("utility.movement_controls")
+    movement_controls.GPIO.reset_mock()
+
+    movement_controls.Backwards()
+
+    assert movement_controls.GPIO.output.call_args_list == [
+        call(
+            [
+                movement_controls.pinMotorAForwards,
+                movement_controls.pinMotorABackwards,
+                movement_controls.pinMotorBForwards,
+                movement_controls.pinMotorBBackwards,
+            ],
+            0,
+        ),
+        call(
+            [
+                movement_controls.pinMotorABackwards,
+                movement_controls.pinMotorBBackwards,
+            ],
+            1,
+        ),
+    ]
+
+
+def test_left_sets_turn_pins_after_clearing_previous_state(reload_module):
+    movement_controls = reload_module("utility.movement_controls")
+    movement_controls.GPIO.reset_mock()
+
+    movement_controls.Left()
+
+    assert movement_controls.GPIO.output.call_args_list == [
+        call(
+            [
+                movement_controls.pinMotorAForwards,
+                movement_controls.pinMotorABackwards,
+                movement_controls.pinMotorBForwards,
+                movement_controls.pinMotorBBackwards,
+            ],
+            0,
+        ),
+        call(
+            [
+                movement_controls.pinMotorAForwards,
+                movement_controls.pinMotorBBackwards,
+            ],
+            1,
+        ),
+    ]
+
+
+def test_right_sets_turn_pins_after_clearing_previous_state(reload_module):
+    movement_controls = reload_module("utility.movement_controls")
+    movement_controls.GPIO.reset_mock()
+
+    movement_controls.Right()
+
+    assert movement_controls.GPIO.output.call_args_list == [
+        call(
+            [
+                movement_controls.pinMotorAForwards,
+                movement_controls.pinMotorABackwards,
+                movement_controls.pinMotorBForwards,
+                movement_controls.pinMotorBBackwards,
+            ],
+            0,
+        ),
+        call(
+            [
+                movement_controls.pinMotorABackwards,
+                movement_controls.pinMotorBForwards,
+            ],
+            1,
+        ),
+    ]
 
 
 def test_logs_endpoint_returns_recent_entries(reload_modules):
@@ -26,25 +153,14 @@ def test_root_route_serves_control_page(reload_modules):
     assert b"Pibot Movement Controls" in response.data
 
 
-def test_root_route_serves_independent_page_when_mode_is_set(monkeypatch, reload_modules):
-    monkeypatch.setenv("PIBOT_MODE", "independent")
+def test_control_route_serves_control_page(reload_modules):
     _, server = reload_modules("control.app_instance", "control.server")
     client = server.app.test_client()
 
-    response = client.get("/")
+    response = client.get("/control")
 
     assert response.status_code == 200
-    assert b"Pibot Independent Mode" in response.data
-
-
-def test_independent_route_serves_independent_page(reload_modules):
-    _, server = reload_modules("control.app_instance", "control.server")
-    client = server.app.test_client()
-
-    response = client.get("/independent")
-
-    assert response.status_code == 200
-    assert b"Pibot Independent Mode" in response.data
+    assert b"Pibot Movement Controls" in response.data
 
 
 def test_log_buffer_keeps_only_latest_fifty_entries(reload_module):
@@ -125,7 +241,7 @@ def test_stop_route_calls_movement_control(monkeypatch, reload_modules):
     stop.assert_called_once_with()
 
 
-def test_socket_connect_starts_streaming(monkeypatch, reload_modules):
+def test_socket_connect_logs_client_connection(monkeypatch, reload_modules):
     _, server = reload_modules("control.app_instance", "control.server")
     log = Mock()
     monkeypatch.setattr(server, "log", log)
@@ -173,40 +289,3 @@ def test_disconnect_stops_robot(monkeypatch, reload_modules):
     server.handle_disconnect()
 
     stop.assert_called_once_with()
-
-
-def test_video_feed_route_returns_mjpeg_response(monkeypatch, reload_modules):
-    _, server = reload_modules("control.app_instance", "control.server")
-    generator = iter([b"--frame\r\nContent-Type: image/jpeg\r\n\r\nframe\r\n"])
-    monkeypatch.setattr(server, "generate_mjpeg_stream", Mock(return_value=generator))
-
-    response = server.video_feed()
-
-    assert response.mimetype == "multipart/x-mixed-replace"
-    assert response.headers["Content-Type"] == "multipart/x-mixed-replace; boundary=frame"
-
-
-def test_independent_video_feed_route_returns_mjpeg_response(monkeypatch, reload_modules):
-    _, server = reload_modules("control.app_instance", "control.server")
-    generator = iter([b"--frame\r\nContent-Type: image/jpeg\r\n\r\nframe\r\n"])
-    service = Mock()
-    service.stream_frames.return_value = generator
-    monkeypatch.setattr(server, "independent_mode_service", service)
-
-    response = server.independent_video_feed()
-
-    assert response.mimetype == "multipart/x-mixed-replace"
-    assert response.headers["Content-Type"] == "multipart/x-mixed-replace; boundary=frame"
-
-
-def test_independent_logs_route_returns_service_logs(monkeypatch, reload_modules):
-    _, server = reload_modules("control.app_instance", "control.server")
-    service = Mock()
-    service.get_log_entries.return_value = ["[12:00:00] Detected people: person"]
-    monkeypatch.setattr(server, "independent_mode_service", service)
-    client = server.app.test_client()
-
-    response = client.get("/independent/logs")
-
-    assert response.status_code == 200
-    assert response.get_json() == ["[12:00:00] Detected people: person"]
