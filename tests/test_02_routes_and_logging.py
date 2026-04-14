@@ -16,6 +16,16 @@ def test_logs_endpoint_returns_recent_entries(reload_modules):
     assert response.get_json()[-2:] == logger_module.log_buffer[-2:]
 
 
+def test_root_route_serves_control_page(reload_modules):
+    _, server = reload_modules("control.app_instance", "control.server")
+    client = server.app.test_client()
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"Pibot Movement Controls" in response.data
+
+
 def test_log_buffer_keeps_only_latest_fifty_entries(reload_module):
     logger_module = reload_module("utility.logger")
     logger_module.log_buffer.clear()
@@ -96,12 +106,12 @@ def test_stop_route_calls_movement_control(monkeypatch, reload_modules):
 
 def test_socket_connect_starts_streaming(monkeypatch, reload_modules):
     _, server = reload_modules("control.app_instance", "control.server")
-    start_streaming = Mock()
-    monkeypatch.setattr(server, "start_streaming", start_streaming)
+    log = Mock()
+    monkeypatch.setattr(server, "log", log)
 
     server.handle_connect()
 
-    start_streaming.assert_called_once_with(server.socketio)
+    log.assert_called_once_with("Client connected")
 
 
 def test_move_start_event_calls_matching_movement_control(monkeypatch, reload_modules):
@@ -142,3 +152,14 @@ def test_disconnect_stops_robot(monkeypatch, reload_modules):
     server.handle_disconnect()
 
     stop.assert_called_once_with()
+
+
+def test_video_feed_route_returns_mjpeg_response(monkeypatch, reload_modules):
+    _, server = reload_modules("control.app_instance", "control.server")
+    generator = iter([b"--frame\r\nContent-Type: image/jpeg\r\n\r\nframe\r\n"])
+    monkeypatch.setattr(server, "generate_mjpeg_stream", Mock(return_value=generator))
+
+    response = server.video_feed()
+
+    assert response.mimetype == "multipart/x-mixed-replace"
+    assert response.headers["Content-Type"] == "multipart/x-mixed-replace; boundary=frame"

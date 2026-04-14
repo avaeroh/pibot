@@ -94,7 +94,7 @@
     <h1>Pibot Movement Controls</h1>
 
     <div id="spinner"></div>
-    <img id="video" src="" alt="Video feed unavailable">
+    <img id="video" src="/video_feed" alt="Video feed unavailable">
 
     <div class="controls">
         <div class="controls-row">
@@ -137,58 +137,36 @@
         const socket = io();
         let retryInterval = null;
         let retryActive = false;
-        let connectionFailures = 0;
-        let allowConnectionErrors = false;
         let activeDirection = null;
         const heldKeys = new Set();
         const movementKeys = new Set(['w', 'a', 's', 'd']);
+        const video = document.getElementById('video');
+        const spinner = document.getElementById('spinner');
 
-        setTimeout(() => {
-            allowConnectionErrors = true;
-        }, 5000);
+        video.addEventListener('load', function () {
+            video.style.display = 'block';
+            spinner.style.display = 'none';
 
-        socket.on('video_frame', function (data) {
-            const video = document.getElementById('video');
-            const spinner = document.getElementById('spinner');
+            if (retryInterval) {
+                clearInterval(retryInterval);
+                retryInterval = null;
+            }
 
-            if (data && typeof data.data === 'string' && data.data.length > 100) {
-                video.src = 'data:image/jpeg;base64,' + data.data;
-                video.style.display = 'block';
-                spinner.style.display = 'none';
-
-                if (retryInterval) {
-                    clearInterval(retryInterval);
-                    retryInterval = null;
-                }
-
-                if (retryActive) {
-                    retryActive = false;
-                    logOutput('✅ Video feed restored.');
-                }
-            } else {
-                if (!retryActive) {
-                    retryActive = true;
-                    logOutput('⚠️ No valid video frame received. Starting retry loop...');
-                    startRetryLoop();
-                }
-                video.style.display = 'none';
-                spinner.style.display = 'block';
+            if (retryActive) {
+                retryActive = false;
+                logOutput('✅ Video feed restored.');
             }
         });
 
-        socket.on('connect_error', function () {
-            connectionFailures++;
-            if (allowConnectionErrors && connectionFailures >= 3 && connectionFailures % 3 === 0) {
-                logOutput('⚠️ Unable to connect to the video feed.');
+        video.addEventListener('error', function () {
+            if (!retryActive) {
+                retryActive = true;
+                logOutput('⚠️ Video feed unavailable. Starting retry loop...');
+                startRetryLoop();
             }
-        });
 
-        socket.on('connect', function () {
-            connectionFailures = 0;
-        });
-
-        socket.on('reconnect', function () {
-            logOutput('Reconnected to video feed.');
+            video.style.display = 'none';
+            spinner.style.display = 'block';
         });
 
         function mapKeyToDirection(key) {
@@ -262,12 +240,9 @@
         }
 
         function startRetryLoop() {
-            const video = document.getElementById('video');
-            const spinner = document.getElementById('spinner');
-
             retryInterval = setInterval(() => {
                 logOutput('🔄 Retrying video connection...');
-                video.src = 'data:image/jpeg;base64,';
+                video.src = `/video_feed?ts=${Date.now()}`;
                 video.style.display = 'none';
                 spinner.style.display = 'block';
             }, 3000);

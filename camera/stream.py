@@ -1,19 +1,19 @@
 import os
 import subprocess
-import time
-import cv2
-import base64
-from threading import Thread
+
 from utility.logger import log
 
 FIFO_PATH = "/tmp/vidstream.mjpeg"
 VIDEO_PROCESS = None
+JPEG_START = b"\xff\xd8"
+JPEG_END = b"\xff\xd9"
 
 WIDTH = int(os.getenv("LIBCAM_WIDTH", 640))
 HEIGHT = int(os.getenv("LIBCAM_HEIGHT", 480))
 FPS = int(os.getenv("LIBCAM_FPS", 10))
 QUALITY = int(os.getenv("LIBCAM_QUALITY", 85))
 ROTATION = int(os.getenv("LIBCAM_ROTATION", 180))
+
 
 def cleanup_camera():
     global VIDEO_PROCESS
@@ -22,49 +22,79 @@ def cleanup_camera():
         log("Terminating libcamera-vid process")
         VIDEO_PROCESS.terminate()
         VIDEO_PROCESS.wait()
+    VIDEO_PROCESS = None
     if os.path.exists(FIFO_PATH):
         log(f"Removing FIFO at {FIFO_PATH}")
         os.remove(FIFO_PATH)
 
+
 def start_libcamera_stream():
     global VIDEO_PROCESS
+    if VIDEO_PROCESS and VIDEO_PROCESS.poll() is None:
+        return
+
     if not os.path.exists(FIFO_PATH):
         log(f"Creating FIFO at {FIFO_PATH}")
         os.mkfifo(FIFO_PATH)
+
     log(f"Starting libcamera-vid at {WIDTH}x{HEIGHT}, {FPS}fps, quality {QUALITY}")
-    VIDEO_PROCESS = subprocess.Popen([
-        "libcamera-vid",
-        "-t", "0",
-        "--inline",
-        "--width", str(WIDTH),
-        "--height", str(HEIGHT),
-        "--framerate", str(FPS),
-        "--quality", str(QUALITY),
-        "--rotation", str(ROTATION),
-        "-o", FIFO_PATH
-    ])
+    VIDEO_PROCESS = subprocess.Popen(
+        [
+            "libcamera-vid",
+            "-t",
+            "0",
+            "--codec",
+            "mjpeg",
+            "--inline",
+            "--width",
+            str(WIDTH),
+            "--height",
+            str(HEIGHT),
+            "--framerate",
+            str(FPS),
+            "--quality",
+            str(QUALITY),
+            "--rotation",
+            str(ROTATION),
+            "-o",
+            FIFO_PATH,
+        ]
+    )
 
-def capture_frames(socketio):
-    log("Opening FIFO stream with OpenCV")
-    cap = cv2.VideoCapture(FIFO_PATH)
-    if not cap.isOpened():
-        log("Error: Failed to open video stream from pipe.")
-        return
-    log("Video stream opened successfully")
+
+def iter_mjpeg_frames(stream, chunk_size=4096):
+    buffer = b""
     while True:
-        for _ in range(2): cap.grab()  # skip stale frames
-        ret, frame = cap.read()
-        if not ret:
-            log("Failed to read frame from stream")
-            time.sleep(0.1)
-            continue
-        _, buffer = cv2.imencode('.jpg', frame)
-        encoded_frame = base64.b64encode(buffer).decode('utf-8')
-        socketio.emit('video_frame', {'data': encoded_frame}, namespace='/')
-        time.sleep(1 / FPS)
+        chunk = stream.read(chunk_size)
+        if not chunk:
+            break
 
-def start_streaming(socketio):
+        buffer += chunk
+
+        while True:
+            start_index = buffer.find(JPEG_START)
+            if start_index == -1:
+                buffer = b""
+                break
+
+            end_index = buffer.find(JPEG_END, start_index + len(JPEG_START))
+            if end_index == -1:
+                buffer = buffer[start_index:]
+                break
+
+            frame = buffer[start_index : end_index + len(JPEG_END)]
+            yield frame
+            buffer = buffer[end_index + len(JPEG_END) :]
+
+
+def generate_mjpeg_stream():
     start_libcamera_stream()
-    thread = Thread(target=capture_frames, args=(socketio,))
-    thread.daemon = True
-    thread.start()
+    log("Streaming MJPEG frames directly from FIFO")
+    with open(FIFO_PATH, "rb") as fifo_stream:
+        for frame in iter_mjpeg_frames(fifo_stream):
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n"
+                + frame
+                + b"\r\n"
+            )

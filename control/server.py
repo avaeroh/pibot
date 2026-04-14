@@ -1,9 +1,10 @@
 from control.app_instance import app, socketio
+from flask import Response
 import signal
 import atexit
 from utility.logger import setup_logging, log
 from control import movement_routes
-from camera.stream import start_streaming, cleanup_camera
+from camera.stream import generate_mjpeg_stream, cleanup_camera
 from utility.movement_controls import Forwards, Backwards, Left, Right, Stop
 
 setup_logging(app)
@@ -19,8 +20,7 @@ atexit.register(cleanup_camera)
 
 @socketio.on('connect')
 def handle_connect():
-    log("Client connected, starting video stream")
-    start_streaming(socketio)
+    log("Client connected")
 
 
 @socketio.on('move_start')
@@ -54,3 +54,11 @@ def handle_stop():
 def handle_disconnect():
     log("Client disconnected, stopping movement")
     Stop()
+
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(
+        generate_mjpeg_stream(),
+        mimetype='multipart/x-mixed-replace; boundary=frame',
+    )

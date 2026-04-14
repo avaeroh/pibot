@@ -1,5 +1,9 @@
-from control.server import app, socketio
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from control.server import app, socketio
 
 if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', 5000))

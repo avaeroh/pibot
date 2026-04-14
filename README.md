@@ -15,12 +15,12 @@ My robot Pi! This has been built with:
 ## Current Functionality
 
 - Flask-based webserver for PiCamera streaming and real-time WASD/button control  
-- Real-time video streaming using `libcamera-vid` 
+- Lower-latency MJPEG video streaming using `libcamera-vid` and a direct HTTP feed
 - Graceful teardown of camera processes and cleanup on exit  
 - Automatic install/run via Makefile
 - Can be developed against without GPIO functionality (utilising a mocked import of GPIO)
 - Hold-to-move control flow over Socket.IO with explicit stop on key release, disconnect, or browser blur
-- Readable `pytest` suite covering movement controls, routes/logging, Socket.IO control events, and camera lifecycle behaviour
+- Readable `pytest` suite covering movement controls, routes/logging, Socket.IO control events, and camera lifecycle/stream parsing behaviour
 
 ---
 
@@ -37,7 +37,7 @@ My robot Pi! This has been built with:
 
 ## Setup & Usage
 
-### 1. (Optional) Create a `.env` file to overwrite config.
+### 1. (Optional) Create a `.env` file for local configuration
 
 ```env
 PYTHONUNBUFFERED=1
@@ -47,6 +47,8 @@ LIBCAM_QUALITY=85
 LIBCAM_ROTATION=180 # Depending on which way up your camera is
 MOCK_GPIO=true # If you are developing on a PI with a GPIO and you don't want to move the motors while debugging
 ```
+
+The app loads `.env` automatically on startup.
 
 ---
 
@@ -76,7 +78,7 @@ This will:
 
 ---
 
-### 4. Run the Flask app
+### 4. Run the pibot webserver
 
 ```bash
 make run
@@ -87,18 +89,47 @@ This will:
 - Start `libcamera-vid` in the background
 - Stream frames through a named pipe (`/tmp/vidstream.mjpeg`)
 - Serve the control interface via Flask + Socket.IO
+- Expose the camera at `/video_feed` as an MJPEG stream
 - Expose logs via `/logs` for debugging
 
-Keyboard controls:
+### 5. Open the control page from another device
+
+Find the Pi's LAN IP on the Pi:
+
+```bash
+hostname -I
+```
+
+Then, from a phone or computer on the same network, open:
+
+```text
+http://<your-pi-ip>:5000
+```
+
+Examples:
+
+- `http://192.168.1.42:5000`
+- `http://raspberrypi.local:5000` if mDNS is working on your network
+
+Useful routes:
+
+- `/` - main control page served from `static/index.html`
+- `/video_feed` - raw MJPEG camera stream
+- `/logs` - recent server logs for debugging
+
+### 6. Drive the robot
+
+Once the page is open:
 
 - Hold `W`, `A`, `S`, or `D` to keep the robot moving
 - Release the key to stop
 - Press `Space` to force an immediate stop
+- Or use the on-screen buttons with click-and-hold / touch-and-hold
 - If the browser loses focus or disconnects, the robot is told to stop as a safety fallback
 
 ---
 
-### 5. (Optional) Download TensorFlow Lite models
+### 7. (Optional) Download TensorFlow Lite models
 
 ```bash
 make download-models
@@ -108,7 +139,7 @@ Places `.tflite` files in the `models/` folder.
 
 ---
 
-### 6. Clean up (including FIFO and models)
+### 8. Clean up (including FIFO and models)
 
 ```bash
 make clean
@@ -118,9 +149,10 @@ make clean
 
 ## Developer Notes
 
-- All video is streamed over WebSocket using base64 JPEG frames  
-- The camera feed is managed using `libcamera-vid`, started and cleaned up by the Flask server  
+- Video is streamed over HTTP as MJPEG via `/video_feed`, which avoids the previous OpenCV re-encode and base64 WebSocket path
+- The camera feed is managed using `libcamera-vid`, started on demand and cleaned up by the Flask server
 - Movement control is stateful rather than time-based: the browser sends `move_start` and `stop` Socket.IO events instead of repeated timed movement requests
+- The server binds to `0.0.0.0` and uses `FLASK_PORT` if set, otherwise port `5000`
 - Tests are organised by responsibility:
   - `tests/test_01_movement_controls.py`
   - `tests/test_02_routes_and_logging.py`

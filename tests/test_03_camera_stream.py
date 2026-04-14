@@ -1,8 +1,5 @@
-import base64
-from types import SimpleNamespace
+from io import BytesIO
 from unittest.mock import Mock
-
-import pytest
 
 
 def test_cleanup_camera_terminates_process_and_removes_fifo(monkeypatch, reload_module):
@@ -19,11 +16,14 @@ def test_cleanup_camera_terminates_process_and_removes_fifo(monkeypatch, reload_
     process.terminate.assert_called_once_with()
     process.wait.assert_called_once_with()
     assert removed_paths == [stream.FIFO_PATH]
+    assert stream.VIDEO_PROCESS is None
 
 
 def test_start_libcamera_stream_creates_fifo_and_starts_process(monkeypatch, reload_module):
     stream = reload_module("camera.stream")
-    popen = Mock(return_value="process")
+    process = Mock()
+    process.poll.return_value = None
+    popen = Mock(return_value=process)
     mkfifo = Mock()
     monkeypatch.setattr(stream.os.path, "exists", lambda path: False)
     monkeypatch.setattr(stream.os, "mkfifo", mkfifo)
@@ -37,6 +37,8 @@ def test_start_libcamera_stream_creates_fifo_and_starts_process(monkeypatch, rel
             "libcamera-vid",
             "-t",
             "0",
+            "--codec",
+            "mjpeg",
             "--inline",
             "--width",
             str(stream.WIDTH),
@@ -52,57 +54,57 @@ def test_start_libcamera_stream_creates_fifo_and_starts_process(monkeypatch, rel
             stream.FIFO_PATH,
         ]
     )
-    assert stream.VIDEO_PROCESS == "process"
+    assert stream.VIDEO_PROCESS is process
 
 
-def test_capture_frames_emits_base64_encoded_jpeg(monkeypatch, reload_module):
-    class StreamComplete(Exception):
-        pass
-
+def test_start_libcamera_stream_reuses_existing_running_process(monkeypatch, reload_module):
     stream = reload_module("camera.stream")
-    cap = Mock()
-    cap.isOpened.return_value = True
-    cap.read.return_value = (True, "frame")
-    socketio = SimpleNamespace(emit=Mock(side_effect=StreamComplete))
-    monkeypatch.setattr(stream.cv2, "VideoCapture", Mock(return_value=cap))
-    monkeypatch.setattr(stream.cv2, "imencode", Mock(return_value=(True, b"jpeg-bytes")))
-    monkeypatch.setattr(stream.time, "sleep", lambda *_: None)
+    process = Mock()
+    process.poll.return_value = None
+    stream.VIDEO_PROCESS = process
+    mkfifo = Mock()
+    popen = Mock()
+    monkeypatch.setattr(stream.os, "mkfifo", mkfifo)
+    monkeypatch.setattr(stream.subprocess, "Popen", popen)
 
-    with pytest.raises(StreamComplete):
-        stream.capture_frames(socketio)
+    stream.start_libcamera_stream()
 
-    cap.grab.assert_called()
-    socketio.emit.assert_called_once_with(
-        "video_frame",
-        {"data": base64.b64encode(b"jpeg-bytes").decode("utf-8")},
-        namespace="/",
+    mkfifo.assert_not_called()
+    popen.assert_not_called()
+
+
+def test_iter_mjpeg_frames_extracts_complete_jpegs(reload_module):
+    stream = reload_module("camera.stream")
+    payload = (
+        b"noise"
+        + stream.JPEG_START
+        + b"frame-one"
+        + stream.JPEG_END
+        + b"more-noise"
+        + stream.JPEG_START
+        + b"frame-two"
+        + stream.JPEG_END
     )
 
+    frames = list(stream.iter_mjpeg_frames(BytesIO(payload), chunk_size=5))
 
-def test_capture_frames_returns_when_fifo_cannot_be_opened(monkeypatch, reload_module):
-    stream = reload_module("camera.stream")
-    cap = Mock()
-    cap.isOpened.return_value = False
-    socketio = SimpleNamespace(emit=Mock())
-    monkeypatch.setattr(stream.cv2, "VideoCapture", Mock(return_value=cap))
-
-    stream.capture_frames(socketio)
-
-    socketio.emit.assert_not_called()
+    assert frames == [
+        stream.JPEG_START + b"frame-one" + stream.JPEG_END,
+        stream.JPEG_START + b"frame-two" + stream.JPEG_END,
+    ]
 
 
-def test_start_streaming_starts_camera_then_background_thread(monkeypatch, reload_module):
+def test_generate_mjpeg_stream_wraps_frames_for_http_response(monkeypatch, reload_module):
     stream = reload_module("camera.stream")
     start_libcamera_stream = Mock()
-    thread = Mock()
-    thread_class = Mock(return_value=thread)
-    socketio = object()
     monkeypatch.setattr(stream, "start_libcamera_stream", start_libcamera_stream)
-    monkeypatch.setattr(stream, "Thread", thread_class)
+    monkeypatch.setattr(
+        "builtins.open",
+        Mock(return_value=BytesIO(stream.JPEG_START + b"frame" + stream.JPEG_END)),
+    )
 
-    stream.start_streaming(socketio)
+    chunk = next(stream.generate_mjpeg_stream())
 
     start_libcamera_stream.assert_called_once_with()
-    thread_class.assert_called_once_with(target=stream.capture_frames, args=(socketio,))
-    assert thread.daemon is True
-    thread.start.assert_called_once_with()
+    assert chunk.startswith(b"--frame\r\nContent-Type: image/jpeg\r\n\r\n")
+    assert chunk.endswith(b"\r\n")
