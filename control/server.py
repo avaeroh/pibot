@@ -84,17 +84,6 @@ def independent_logs():
 def independent_config():
     if request.method == 'POST':
         payload = request.get_json(silent=True) or {}
-        updated_mapping = independent_mode_service.update_behavior_config(payload.get('mapping', {}))
-        return jsonify(
-            {
-                'mapping': updated_mapping,
-                'options': independent_mode_service.get_behavior_options(),
-            }
-        )
+        return jsonify(independent_mode_service.update_runtime_config(payload))
 
-    return jsonify(
-        {
-            'mapping': independent_mode_service.get_behavior_config(),
-            'options': independent_mode_service.get_behavior_options(),
-        }
-    )
+    return jsonify(independent_mode_service.get_config_state())

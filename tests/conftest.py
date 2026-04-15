@@ -5,9 +5,10 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def mock_gpio_env(monkeypatch):
+def mock_gpio_env(monkeypatch, tmp_path):
     monkeypatch.setenv("MOCK_GPIO", "true")
     monkeypatch.setenv("BUTTON_DELAY", "0")
+    monkeypatch.setenv("PIBOT_CONFIG_PATH", str(tmp_path / "gesture-mappings.json"))
 
 
 @pytest.fixture

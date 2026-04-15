@@ -21,9 +21,9 @@ My robot Pi! This has been built with:
 - Automatic install/run via Makefile targets for each mode
 - Can be developed against without GPIO functionality (utilising a mocked import of GPIO)
 - Hold-to-move control flow over Socket.IO with explicit stop on key release, disconnect, or browser blur
-- Independent mode powered by TensorFlow Lite object detection buckets for `people` and `cat`
-- Independent mode browser controls for mapping recognition buckets to behaviors in memory
-- Readable `pytest` suite covering movement controls, routes/logging, mode routing, Socket.IO control events, camera lifecycle/stream parsing, and independent-mode detection logic
+- Independent mode powered by TensorFlow Lite object detection for `subjects` and a gesture-ready config path for future hand recognition
+- Independent mode browser controls for switching between `subjects` and `gestures`, and mapping each recognition bucket to persisted behaviors
+- Readable `pytest` suite covering movement controls, routes/logging, mode routing, Socket.IO control events, camera lifecycle/stream parsing, persisted independent-mode config, and detection logic
 
 ---
 
@@ -143,7 +143,7 @@ This will:
 
 - Run the `pytest` suite from `.venv-control`
 - Force `MOCK_GPIO=true` so motor controls can be exercised safely off-device
-- Validate the Flask routes, mode routing, log buffers, movement helpers, camera stream lifecycle, and independent-mode bucket logic
+- Validate the Flask routes, mode routing, log buffers, movement helpers, camera stream lifecycle, persisted independent-mode config, and detection logic
 
 ---
 
@@ -197,8 +197,11 @@ Mode summary:
   - annotated detection feed is served at `/independent/video_feed`
   - browser log is available at `/independent/logs`
   - browser mapping config is available at `/independent/config`
-  - detections are bucketed into `people` and `cat`
-  - each bucket can be mapped in the browser to `No Action`, `Wiggle`, or `Spin 360`
+  - only one detection mode can be active at a time: `subjects` or `gestures`
+  - `subjects` currently uses the live TFLite detector for `people` and `cat`
+  - `gestures` currently exposes the initial gesture list `thumbs_up`, `open_palm`, and `wave`
+  - every subject and gesture can be mapped to `Disabled`, `Wiggle`, or `Spin 360`
+  - config is persisted to `config/gesture-mappings.json` and reloaded on startup
 
 ### 6. Open the pibot page from another device
 
@@ -248,10 +251,13 @@ Open `/independent`, or run the app with `PIBOT_MODE=independent` and open `/`.
 
 - The camera feed is annotated in the browser with TFLite detections
 - A browser log shows matches and triggered behaviours
-- A simple checkbox panel lets you choose one behavior per bucket
+- A simple checkbox panel lets you choose the active detection mode and one behavior per subject or gesture bucket
+- `subjects` and `gestures` are mutually exclusive in the UI and the backend
 - `people` currently means any detected `person`
 - `cat` currently means any detected `cat`
-- Mapping changes are in memory only and affect the next eligible detection during the current run
+- The initial gesture list is `thumbs_up`, `open_palm`, and `wave`
+- Gesture mappings are persisted now, but live gesture recognition is still a scaffold until a recognizer is added
+- Mapping changes affect the next eligible detection immediately and are also written to `config/gesture-mappings.json`
 - Detections are throttled with `TFLITE_DETECTION_INTERVAL` and a lower default FPS to stay friendlier to a Raspberry Pi 4
 - Behaviour execution is cooldown-limited so repeated detections do not spam motion commands
 
@@ -272,10 +278,18 @@ make clean
 - Movement control is stateful rather than time-based: the browser sends `move_start` and `stop` Socket.IO events instead of repeated timed movement requests
 - Independent mode uses a throttled TensorFlow Lite detection loop and keeps the annotated JPEG feed in memory for browser clients
 - Independent mode currently depends on `tflite-support==0.4.4`, which is why it runs from the separate Python 3.9 `.venv-independent` environment on Raspberry Pi `aarch64`
-- The current independent-mode buckets are intentionally lightweight:
+- The current independent-mode subject buckets are intentionally lightweight:
   - `people` -> any `person` detection
   - `cat` -> any `cat` detection
-- Independent-mode behavior selection is runtime-configurable in the browser and is not persisted across restarts
+- Independent mode validates `config/gesture-mappings.json` on startup and rewrites invalid config back to a safe state
+- Detection modes are exclusive by design:
+  - `subjects` enables the current TFLite detector
+  - `gestures` disables `subjects` and switches to the gesture bucket config
+- The initial gesture buckets are:
+  - `thumbs_up`
+  - `open_palm`
+  - `wave`
+- Gesture mappings are persisted and survive restart, but the gesture recognizer itself is still a future extension point
 - The current behaviours are best-effort time-based motor routines, not encoder-verified precise motion
 - The server binds to `0.0.0.0` and uses `FLASK_PORT` if set, otherwise port `5000`
 - Static pages are organised by mode:
@@ -294,6 +308,7 @@ http://<your-pi-ip>:5000/logs
 
 - If the independent-mode feed fails, the browser log will surface the detection-service errors from `/independent/logs`
 - Control mode uses a FIFO-backed camera stream; independent mode uses a background detection worker and an annotated MJPEG stream
+- Runtime independent-mode config lives at `config/gesture-mappings.json`
 
 ---
 
@@ -357,5 +372,6 @@ make run
 ## TODO
 
 - Improve frontend with camera status indicator & quality
+- Add a live gesture recognizer so `thumbs_up`, `open_palm`, and `wave` can trigger from the camera feed
 - Add configurable object buckets beyond `people` and `cat`
 - Add richer independent-mode behaviours

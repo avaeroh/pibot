@@ -29,15 +29,9 @@ def wiggle():
 
 
 AVAILABLE_BEHAVIORS = {
-    "none": ("No Action", None),
+    "disabled": ("Disabled", None),
     "spin_360": ("Spin 360", spin_360),
     "wiggle": ("Wiggle", wiggle),
-}
-
-
-DEFAULT_BUCKET_BEHAVIORS = {
-    "cat": "spin_360",
-    "people": "wiggle",
 }
 
 

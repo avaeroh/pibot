@@ -7,8 +7,22 @@ import cv2
 import numpy as np
 
 from camera.stream import get_camera_command, iter_mjpeg_frames
-from independent.behaviors import AVAILABLE_BEHAVIORS, DEFAULT_BUCKET_BEHAVIORS, trigger_behavior
-from independent.detector import TFLiteObjectDetector, bucket_detections, draw_detections, prioritized_buckets, summarize_detections
+from independent.behaviors import AVAILABLE_BEHAVIORS, trigger_behavior
+from independent.config import (
+    BUCKET_GROUPS,
+    DETECTION_MODES,
+    DEFAULT_RUNTIME_CONFIG,
+    get_config_path,
+    load_runtime_config,
+    normalize_runtime_config,
+    save_runtime_config,
+)
+from independent.detector import (
+    TFLiteObjectDetector,
+    bucket_detections,
+    draw_detections,
+    summarize_detections,
+)
 from utility.logger import log
 
 MODEL_PATH = os.getenv("TFLITE_MODEL", "models/efficientdet_lite0.tflite")
@@ -21,7 +35,9 @@ ROTATION = int(os.getenv("LIBCAM_ROTATION", 180))
 DETECTION_INTERVAL_SECONDS = float(os.getenv("TFLITE_DETECTION_INTERVAL", 0.4))
 BEHAVIOR_COOLDOWN_SECONDS = float(os.getenv("INDEPENDENT_BEHAVIOR_COOLDOWN", 6.0))
 JPEG_OUTPUT_QUALITY = int(os.getenv("INDEPENDENT_JPEG_QUALITY", 75))
+CONFIG_PATH = os.getenv("PIBOT_CONFIG_PATH", "config/gesture-mappings.json")
 LOG_LIMIT = 50
+GESTURE_MODE_SUMMARY = "Gesture mode active: waiting for recognizer"
 
 
 class IndependentModeService:
@@ -33,6 +49,7 @@ class IndependentModeService:
         popen=subprocess.Popen,
         time_fn=time.monotonic,
         sleep_fn=time.sleep,
+        config_path=CONFIG_PATH,
     ):
         self._detector_factory = detector_factory or self._default_detector_factory
         self._behavior_runner = behavior_runner
@@ -40,6 +57,7 @@ class IndependentModeService:
         self._popen = popen
         self._time_fn = time_fn
         self._sleep_fn = sleep_fn
+        self._config_path = get_config_path(config_path)
         self._detector = None
         self._process = None
         self._worker_thread = None
@@ -50,11 +68,12 @@ class IndependentModeService:
         self._event_log = []
         self._last_completed_times = {}
         self._active_behavior_bucket = None
-        self._behavior_config = dict(DEFAULT_BUCKET_BEHAVIORS)
         self._latest_summary = "Waiting for detections"
         self._latest_buckets = {}
         self._worker_error = None
         self._stop_requested = False
+        self._gesture_notice_logged = False
+        self._config = self._load_runtime_config()
 
     def _default_detector_factory(self):
         return TFLiteObjectDetector(
@@ -72,6 +91,15 @@ class IndependentModeService:
             if len(self._event_log) > LOG_LIMIT:
                 self._event_log.pop(0)
 
+    def _load_runtime_config(self):
+        config, needs_save = load_runtime_config(self._config_path, AVAILABLE_BEHAVIORS)
+        if needs_save or not self._config_path.exists():
+            save_runtime_config(self._config_path, config)
+        return config
+
+    def _persist_runtime_config(self):
+        save_runtime_config(self._config_path, self._config)
+
     def get_log_entries(self):
         with self._lock:
             return list(self._event_log)
@@ -80,9 +108,26 @@ class IndependentModeService:
         with self._lock:
             return self._worker_error
 
+    def get_active_detection_mode(self):
+        with self._lock:
+            return self._config["active_detection_mode"]
+
     def get_behavior_config(self):
         with self._lock:
-            return dict(self._behavior_config)
+            return {
+                group_key: dict(group_mapping)
+                for group_key, group_mapping in self._config["mappings"].items()
+            }
+
+    def get_runtime_config(self):
+        with self._lock:
+            return {
+                "active_detection_mode": self._config["active_detection_mode"],
+                "mappings": {
+                    group_key: dict(group_mapping)
+                    for group_key, group_mapping in self._config["mappings"].items()
+                },
+            }
 
     def get_behavior_options(self):
         return {
@@ -90,18 +135,39 @@ class IndependentModeService:
             for key, (label, _) in AVAILABLE_BEHAVIORS.items()
         }
 
-    def update_behavior_config(self, mapping):
-        sanitized = {}
-        for bucket, behavior_key in mapping.items():
-            if bucket not in DEFAULT_BUCKET_BEHAVIORS:
-                continue
-            if behavior_key not in AVAILABLE_BEHAVIORS:
-                continue
-            sanitized[bucket] = behavior_key
+    def get_detection_modes(self):
+        return DETECTION_MODES
 
+    def get_bucket_groups(self):
+        return BUCKET_GROUPS
+
+    def get_config_state(self):
+        state = self.get_runtime_config()
+        state["options"] = self.get_behavior_options()
+        state["detection_modes"] = self.get_detection_modes()
+        state["bucket_groups"] = self.get_bucket_groups()
+        return state
+
+    def update_runtime_config(self, payload):
+        payload = payload if isinstance(payload, dict) else {}
+        updates = {
+            "active_detection_mode": payload.get("active_detection_mode", self.get_active_detection_mode()),
+            "mappings": self.get_behavior_config(),
+        }
+
+        incoming_mappings = payload.get("mappings", {})
+        if isinstance(incoming_mappings, dict):
+            for group_key, group_mapping in incoming_mappings.items():
+                if group_key not in BUCKET_GROUPS or not isinstance(group_mapping, dict):
+                    continue
+                updates["mappings"].setdefault(group_key, {})
+                updates["mappings"][group_key].update(group_mapping)
+
+        normalized = normalize_runtime_config(updates, AVAILABLE_BEHAVIORS)
         with self._lock:
-            self._behavior_config.update(sanitized)
-            return dict(self._behavior_config)
+            self._config = normalized
+            self._persist_runtime_config()
+        return self.get_config_state()
 
     def _get_detector(self):
         if self._detector is None:
@@ -174,14 +240,22 @@ class IndependentModeService:
         with self._lock:
             if self._active_behavior_bucket is not None:
                 return
+            active_mode = self._config["active_detection_mode"]
+            active_mapping = dict(self._config["mappings"][active_mode])
+            ordered_buckets = [
+                bucket_key
+                for bucket_key in BUCKET_GROUPS[active_mode]["buckets"]
+                if bucket_key in buckets
+            ]
 
-        for bucket in prioritized_buckets(buckets):
+        for bucket in ordered_buckets:
+            if bucket not in active_mapping:
+                continue
             if not self._should_trigger(bucket, now):
                 continue
 
-            with self._lock:
-                behavior_key = self._behavior_config.get(bucket, "none")
-            if behavior_key == "none":
+            behavior_key = active_mapping.get(bucket, "disabled")
+            if behavior_key == "disabled":
                 continue
 
             with self._lock:
@@ -205,6 +279,23 @@ class IndependentModeService:
             self._latest_summary = summary_text
             self._condition.notify_all()
 
+    def _get_detection_snapshot(self):
+        with self._lock:
+            return self._config["active_detection_mode"], self._latest_buckets, self._latest_summary
+
+    def _detect_subjects(self, frame):
+        detector = self._get_detector()
+        detections = detector.detect(frame)
+        buckets = bucket_detections(detections)
+        summary_text = summarize_detections(detections)
+        return detections, buckets, summary_text
+
+    def _detect_gestures(self):
+        if not self._gesture_notice_logged:
+            self._append_log("Gesture mode is enabled, but no gesture recognizer is configured yet")
+            self._gesture_notice_logged = True
+        return [], {}, GESTURE_MODE_SUMMARY
+
     def _worker_loop(self, command):
         try:
             self._append_log(f"Starting independent camera pipeline with {command[0]}")
@@ -217,7 +308,6 @@ class IndependentModeService:
             if self._process.stdout is None:
                 raise RuntimeError("Independent camera process did not provide stdout")
 
-            detector = self._get_detector()
             last_detections = []
             last_detection_time = 0.0
 
@@ -231,17 +321,19 @@ class IndependentModeService:
                     continue
 
                 now = self._time_fn()
+                active_mode, previous_buckets, previous_summary = self._get_detection_snapshot()
                 if now - last_detection_time >= DETECTION_INTERVAL_SECONDS:
-                    last_detections = detector.detect(frame)
-                    buckets = bucket_detections(last_detections)
-                    summary_text = summarize_detections(last_detections)
-                    self._trigger_behaviors(buckets, now)
-                    if buckets:
-                        self._append_log(f"Detected {summary_text}")
+                    if active_mode == "gestures":
+                        last_detections, buckets, summary_text = self._detect_gestures()
+                    else:
+                        last_detections, buckets, summary_text = self._detect_subjects(frame)
+                        self._trigger_behaviors(buckets, now)
+                        if buckets:
+                            self._append_log(f"Detected {summary_text}")
                     last_detection_time = now
                 else:
-                    buckets = self._latest_buckets
-                    summary_text = self._latest_summary
+                    buckets = previous_buckets
+                    summary_text = previous_summary
 
                 annotated = draw_detections(frame.copy(), last_detections, summary_text=summary_text)
                 success, encoded = cv2.imencode(

@@ -14,7 +14,7 @@
         }
 
         .page {
-            max-width: 1100px;
+            max-width: 1180px;
             margin: 0 auto;
             padding: 24px 16px 40px;
         }
@@ -46,6 +46,8 @@
             padding: 8px 12px;
             font-size: 14px;
             font-weight: bold;
+            display: inline-block;
+            margin-bottom: 12px;
         }
 
         .content {
@@ -68,7 +70,7 @@
         }
 
         #log-output {
-            height: 420px;
+            height: 300px;
             overflow-y: auto;
             font-family: monospace;
             white-space: pre-wrap;
@@ -103,11 +105,32 @@
             text-transform: capitalize;
         }
 
+        .config-card h4 {
+            margin: 0 0 8px;
+            font-size: 15px;
+        }
+
         .checkbox-row {
             display: flex;
             align-items: center;
             gap: 8px;
             margin: 6px 0;
+        }
+
+        .section-title {
+            font-size: 15px;
+            font-weight: bold;
+            color: #355068;
+            margin: 6px 0;
+        }
+
+        .group-heading {
+            margin-top: 6px;
+            font-size: 14px;
+            color: #52606d;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
         }
 
         @media (max-width: 800px) {
@@ -127,7 +150,7 @@
         <div class="topbar">
             <div>
                 <h1>Pibot Independent Mode</h1>
-                <p>Watching for people and cats with TFLite, then triggering robot behaviours.</p>
+                <p>Switch between subject detection and gesture-ready mappings, then trigger robot behaviours from the browser.</p>
             </div>
             <div class="mode-links">
                 <a href="/control">Control Mode</a>
@@ -137,16 +160,16 @@
 
         <div class="content">
             <div class="panel">
-                <div class="status">Live TFLite Feed</div>
+                <div class="status">Live Independent Feed</div>
                 <img id="video" src="/independent/video_feed" alt="Independent mode detection feed" />
-                <p class="note">The overlay highlights detections and shows bucket matches for <strong>people</strong> and <strong>cat</strong>.</p>
+                <p class="note">Only one detection mode can be active at a time. <strong>Subjects</strong> uses the current TFLite detector for <strong>people</strong> and <strong>cat</strong>. <strong>Gestures</strong> keeps its own mappings ready for future hand-gesture recognition.</p>
             </div>
 
             <div class="panel">
-                <div class="status">Detection Log</div>
+                <div class="status">Config and Log</div>
                 <div id="config-panel" class="config-grid"></div>
                 <div id="log-output">Waiting for detections...</div>
-                <p class="note">Select one behavior per bucket. Changes stay in memory and affect the next eligible detection.</p>
+                <p class="note">Mappings are applied in memory immediately and are also written to the persisted config file so they survive restarts. Every subject and gesture can be set to <strong>Disabled</strong>.</p>
             </div>
         </div>
     </div>
@@ -156,44 +179,97 @@
         const video = document.getElementById('video');
         const configPanel = document.getElementById('config-panel');
 
-        function renderConfig(config) {
-            const { mapping, options } = config;
-            configPanel.innerHTML = '';
+        function renderModeSection(config) {
+            const card = document.createElement('div');
+            card.className = 'config-card';
 
-            Object.keys(mapping).sort().forEach((bucket) => {
-                const card = document.createElement('div');
-                card.className = 'config-card';
+            const title = document.createElement('h3');
+            title.textContent = 'Detection Mode';
+            card.appendChild(title);
 
-                const title = document.createElement('h3');
-                title.textContent = bucket;
-                card.appendChild(title);
+            Object.entries(config.detection_modes).forEach(([modeKey, meta]) => {
+                const row = document.createElement('label');
+                row.className = 'checkbox-row';
 
-                Object.entries(options).forEach(([behaviorKey, meta]) => {
-                    const row = document.createElement('label');
-                    row.className = 'checkbox-row';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = config.active_detection_mode === modeKey;
+                checkbox.addEventListener('change', async () => {
+                    if (!checkbox.checked) {
+                        checkbox.checked = true;
+                        return;
+                    }
 
-                    const checkbox = document.createElement('input');
-                    checkbox.type = 'checkbox';
-                    checkbox.checked = mapping[bucket] === behaviorKey;
-                    checkbox.addEventListener('change', async () => {
-                        if (!checkbox.checked) {
-                            checkbox.checked = true;
-                            return;
-                        }
-
-                        await updateConfig(bucket, behaviorKey);
+                    await updateConfig({
+                        active_detection_mode: modeKey
                     });
-
-                    const text = document.createElement('span');
-                    text.textContent = meta.label;
-
-                    row.appendChild(checkbox);
-                    row.appendChild(text);
-                    card.appendChild(row);
                 });
 
-                configPanel.appendChild(card);
+                const text = document.createElement('span');
+                text.textContent = meta.label;
+
+                row.appendChild(checkbox);
+                row.appendChild(text);
+                card.appendChild(row);
             });
+
+            configPanel.appendChild(card);
+        }
+
+        function renderMappingSection(config) {
+            Object.entries(config.bucket_groups).forEach(([groupKey, groupMeta]) => {
+                const groupTitle = document.createElement('div');
+                groupTitle.className = 'group-heading';
+                groupTitle.textContent = groupMeta.label;
+                configPanel.appendChild(groupTitle);
+
+                Object.entries(groupMeta.buckets).forEach(([bucketKey, bucketMeta]) => {
+                    const card = document.createElement('div');
+                    card.className = 'config-card';
+
+                    const title = document.createElement('h4');
+                    title.textContent = bucketMeta.label;
+                    card.appendChild(title);
+
+                    Object.entries(config.options).forEach(([behaviorKey, meta]) => {
+                        const row = document.createElement('label');
+                        row.className = 'checkbox-row';
+
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.checked = config.mappings[groupKey][bucketKey] === behaviorKey;
+                        checkbox.addEventListener('change', async () => {
+                            if (!checkbox.checked) {
+                                checkbox.checked = true;
+                                return;
+                            }
+
+                            await updateConfig({
+                                mappings: {
+                                    [groupKey]: {
+                                        [bucketKey]: behaviorKey
+                                    }
+                                }
+                            });
+                        });
+
+                        const text = document.createElement('span');
+                        text.textContent = meta.label;
+
+                        row.appendChild(checkbox);
+                        row.appendChild(text);
+                        card.appendChild(row);
+                    });
+
+                    configPanel.appendChild(card);
+                });
+            });
+        }
+
+        function renderConfig(config) {
+            configPanel.innerHTML = '';
+            renderModeSection(config);
+            renderMappingSection(config);
         }
 
         function renderLogs(lines) {
@@ -226,17 +302,13 @@
             }
         }
 
-        async function updateConfig(bucket, behaviorKey) {
+        async function updateConfig(payload) {
             const response = await fetch('/independent/config', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    mapping: {
-                        [bucket]: behaviorKey
-                    }
-                })
+                body: JSON.stringify(payload)
             });
             const data = await response.json();
             renderConfig(data);

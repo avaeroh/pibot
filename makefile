@@ -5,6 +5,7 @@ VENV_INDEPENDENT := .venv-independent
 VENV_LEGACY := .venv
 PYTHON39 ?= python3.9
 MODEL_DIR := models
+CONFIG_DIR := config
 FIFO_PATH := /tmp/vidstream.mjpeg
 
 ifeq ($(wildcard $(VENV_CONTROL)/bin/python),)
@@ -17,7 +18,7 @@ all: setup install-deps install-control install-independent
 
 setup:
 	@echo "[Setup] Creating app directory structure"
-	mkdir -p $(MODEL_DIR)
+	mkdir -p $(MODEL_DIR) $(CONFIG_DIR)
 
 install-deps:
 	@echo "[System] Updating apt and installing system dependencies"
