@@ -242,6 +242,10 @@
 
         function renderMappingSection(config) {
             Object.entries(config.bucket_groups).forEach(([groupKey, groupMeta]) => {
+                if (groupKey !== config.visible_bucket_group) {
+                    return;
+                }
+
                 const groupTitle = document.createElement('div');
                 groupTitle.className = 'group-heading';
                 groupTitle.textContent = groupMeta.label;

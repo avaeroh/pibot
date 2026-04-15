@@ -146,6 +146,7 @@ class IndependentModeService:
         state["options"] = self.get_behavior_options()
         state["detection_modes"] = self.get_detection_modes()
         state["bucket_groups"] = self.get_bucket_groups()
+        state["visible_bucket_group"] = state["active_detection_mode"]
         return state
 
     def update_runtime_config(self, payload):

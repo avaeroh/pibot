@@ -197,6 +197,22 @@ def test_service_get_config_state_contains_groups_modes_and_options(tmp_path):
     assert "gestures" in state["bucket_groups"]
     assert "disabled" in state["options"]
     assert "subjects" in state["detection_modes"]
+    assert state["visible_bucket_group"] == "subjects"
+
+
+def test_service_visible_bucket_group_tracks_active_detection_mode(tmp_path):
+    service = IndependentModeService(
+        detector_factory=lambda: object(),
+        behavior_runner=lambda behavior_key: behavior_key,
+        camera_command_resolver=lambda: "rpicam-vid",
+        config_path=tmp_path / "gesture-mappings.json",
+    )
+
+    initial_state = service.get_config_state()
+    updated_state = service.update_runtime_config({"active_detection_mode": "gestures"})
+
+    assert initial_state["visible_bucket_group"] == "subjects"
+    assert updated_state["visible_bucket_group"] == "gestures"
 
 
 def test_service_triggers_highest_priority_subject_bucket_once(tmp_path):

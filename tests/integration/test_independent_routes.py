@@ -62,6 +62,7 @@ def test_independent_config_route_returns_full_config_state(monkeypatch, reload_
             "wiggle": {"label": "Wiggle"},
             "spin_360": {"label": "Spin 360"},
         },
+        "visible_bucket_group": "subjects",
     }
     monkeypatch.setattr(server, "independent_mode_service", service)
     client = server.app.test_client()
@@ -82,6 +83,7 @@ def test_independent_config_route_updates_runtime_config(monkeypatch, reload_mod
         "detection_modes": {},
         "mappings": {"subjects": {"people": "wiggle", "cat": "spin_360"}, "gestures": {"wave": "disabled"}},
         "options": {},
+        "visible_bucket_group": "gestures",
     }
     monkeypatch.setattr(server, "independent_mode_service", service)
     client = server.app.test_client()
@@ -102,3 +104,29 @@ def test_independent_config_route_updates_runtime_config(monkeypatch, reload_mod
         }
     )
     assert response.get_json()["active_detection_mode"] == "gestures"
+
+
+def test_independent_config_route_exposes_visible_bucket_group(monkeypatch, reload_modules):
+    _, server = reload_modules("control.app_instance", "control.server")
+    service = Mock()
+    service.get_config_state.return_value = {
+        "active_detection_mode": "gestures",
+        "bucket_groups": {
+            "subjects": {"label": "Subjects", "buckets": {"people": {"label": "People"}}},
+            "gestures": {"label": "Gestures", "buckets": {"wave": {"label": "Wave"}}},
+        },
+        "detection_modes": {"subjects": {"label": "Subjects"}, "gestures": {"label": "Gestures"}},
+        "mappings": {
+            "subjects": {"people": "wiggle"},
+            "gestures": {"wave": "disabled"},
+        },
+        "options": {"disabled": {"label": "Disabled"}},
+        "visible_bucket_group": "gestures",
+    }
+    monkeypatch.setattr(server, "independent_mode_service", service)
+    client = server.app.test_client()
+
+    response = client.get("/independent/config")
+
+    assert response.status_code == 200
+    assert response.get_json()["visible_bucket_group"] == "gestures"
