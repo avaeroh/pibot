@@ -22,9 +22,7 @@ My robot Pi! This has been built with:
 - Can be developed against without GPIO functionality (utilising a mocked import of GPIO)
 - Hold-to-move control flow over Socket.IO with explicit stop on key release, disconnect, or browser blur
 - Independent mode powered by TensorFlow Lite object detection buckets for `people` and `cat`
-- Independent mode behaviour hooks:
-  - `cat` -> 360 spin
-  - `people` -> wiggle routine
+- Independent mode browser controls for mapping recognition buckets to behaviors in memory
 - Readable `pytest` suite covering movement controls, routes/logging, mode routing, Socket.IO control events, camera lifecycle/stream parsing, and independent-mode detection logic
 
 ---
@@ -198,9 +196,9 @@ Mode summary:
   - root page `/` serves the TFLite monitoring UI
   - annotated detection feed is served at `/independent/video_feed`
   - browser log is available at `/independent/logs`
+  - browser mapping config is available at `/independent/config`
   - detections are bucketed into `people` and `cat`
-  - `cat` triggers a 360 spin
-  - `people` triggers a wiggle routine
+  - each bucket can be mapped in the browser to `No Action`, `Wiggle`, or `Spin 360`
 
 ### 6. Open the pibot page from another device
 
@@ -229,6 +227,7 @@ Useful routes:
 - `/video_feed` - raw control-mode camera stream
 - `/independent/video_feed` - annotated independent-mode feed
 - `/independent/logs` - independent-mode detection and behaviour log
+- `/independent/config` - current in-memory bucket-to-behavior mapping
 - `/logs` - recent server logs for debugging
 
 ### 7. Use control mode
@@ -249,8 +248,10 @@ Open `/independent`, or run the app with `PIBOT_MODE=independent` and open `/`.
 
 - The camera feed is annotated in the browser with TFLite detections
 - A browser log shows matches and triggered behaviours
+- A simple checkbox panel lets you choose one behavior per bucket
 - `people` currently means any detected `person`
 - `cat` currently means any detected `cat`
+- Mapping changes are in memory only and affect the next eligible detection during the current run
 - Detections are throttled with `TFLITE_DETECTION_INTERVAL` and a lower default FPS to stay friendlier to a Raspberry Pi 4
 - Behaviour execution is cooldown-limited so repeated detections do not spam motion commands
 
@@ -274,6 +275,7 @@ make clean
 - The current independent-mode buckets are intentionally lightweight:
   - `people` -> any `person` detection
   - `cat` -> any `cat` detection
+- Independent-mode behavior selection is runtime-configurable in the browser and is not persisted across restarts
 - The current behaviours are best-effort time-based motor routines, not encoder-verified precise motion
 - The server binds to `0.0.0.0` and uses `FLASK_PORT` if set, otherwise port `5000`
 - Static pages are organised by mode:

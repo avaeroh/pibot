@@ -1,5 +1,5 @@
 from control.app_instance import app, socketio
-from flask import Response, jsonify
+from flask import Response, jsonify, request
 import signal
 import atexit
 from utility.logger import setup_logging, log
@@ -78,3 +78,23 @@ def independent_video_feed():
 @app.route('/independent/logs')
 def independent_logs():
     return jsonify(independent_mode_service.get_log_entries())
+
+
+@app.route('/independent/config', methods=['GET', 'POST'])
+def independent_config():
+    if request.method == 'POST':
+        payload = request.get_json(silent=True) or {}
+        updated_mapping = independent_mode_service.update_behavior_config(payload.get('mapping', {}))
+        return jsonify(
+            {
+                'mapping': updated_mapping,
+                'options': independent_mode_service.get_behavior_options(),
+            }
+        )
+
+    return jsonify(
+        {
+            'mapping': independent_mode_service.get_behavior_config(),
+            'options': independent_mode_service.get_behavior_options(),
+        }
+    )

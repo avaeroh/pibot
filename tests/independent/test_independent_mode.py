@@ -51,6 +51,43 @@ def test_independent_logs_route_returns_service_logs(monkeypatch, reload_modules
     assert response.get_json() == ["[12:00:00] Detected people: person"]
 
 
+def test_independent_config_route_returns_mapping_and_options(monkeypatch, reload_modules):
+    _, server = reload_modules("control.app_instance", "control.server")
+    service = Mock()
+    service.get_behavior_config.return_value = {"people": "wiggle", "cat": "spin_360"}
+    service.get_behavior_options.return_value = {
+        "none": {"label": "No Action"},
+        "wiggle": {"label": "Wiggle"},
+        "spin_360": {"label": "Spin 360"},
+    }
+    monkeypatch.setattr(server, "independent_mode_service", service)
+    client = server.app.test_client()
+
+    response = client.get("/independent/config")
+
+    assert response.status_code == 200
+    assert response.get_json()["mapping"] == {"people": "wiggle", "cat": "spin_360"}
+
+
+def test_independent_config_route_updates_mapping(monkeypatch, reload_modules):
+    _, server = reload_modules("control.app_instance", "control.server")
+    service = Mock()
+    service.update_behavior_config.return_value = {"people": "none", "cat": "spin_360"}
+    service.get_behavior_options.return_value = {
+        "none": {"label": "No Action"},
+        "wiggle": {"label": "Wiggle"},
+        "spin_360": {"label": "Spin 360"},
+    }
+    monkeypatch.setattr(server, "independent_mode_service", service)
+    client = server.app.test_client()
+
+    response = client.post("/independent/config", json={"mapping": {"people": "none"}})
+
+    assert response.status_code == 200
+    service.update_behavior_config.assert_called_once_with({"people": "none"})
+    assert response.get_json()["mapping"] == {"people": "none", "cat": "spin_360"}
+
+
 def test_bucket_for_label_maps_people_and_cat():
     assert bucket_for_label("person") == "people"
     assert bucket_for_label("cat") == "cat"
@@ -92,7 +129,7 @@ def test_summarize_detections_formats_bucket_summary():
 def test_service_builds_stdout_camera_command():
     service = IndependentModeService(
         detector_factory=lambda: object(),
-        behavior_runner=lambda bucket: bucket,
+        behavior_runner=lambda behavior_key: behavior_key,
         camera_command_resolver=lambda: "rpicam-vid",
     )
 
@@ -108,7 +145,7 @@ def test_service_triggers_highest_priority_bucket_once():
     calls = []
     service = IndependentModeService(
         detector_factory=lambda: object(),
-        behavior_runner=lambda bucket: calls.append(bucket) or bucket,
+        behavior_runner=lambda behavior_key: calls.append(behavior_key) or behavior_key,
         camera_command_resolver=lambda: "rpicam-vid",
         time_fn=lambda: 100.0,
     )
@@ -122,14 +159,14 @@ def test_service_triggers_highest_priority_bucket_once():
     )
     service._behavior_thread.join(timeout=1)
 
-    assert calls == ["cat"]
+    assert calls == ["spin_360"]
 
 
 def test_service_respects_behavior_cooldown():
     calls = []
     service = IndependentModeService(
         detector_factory=lambda: object(),
-        behavior_runner=lambda bucket: calls.append(bucket) or bucket,
+        behavior_runner=lambda behavior_key: calls.append(behavior_key) or behavior_key,
         camera_command_resolver=lambda: "rpicam-vid",
     )
     service._last_completed_times["cat"] = 50.0
@@ -145,8 +182,8 @@ def test_service_respects_behavior_cooldown():
 def test_service_does_not_queue_new_behavior_while_one_is_running():
     calls = []
 
-    def behavior_runner(bucket):
-        calls.append(bucket)
+    def behavior_runner(behavior_key):
+        calls.append(behavior_key)
 
     service = IndependentModeService(
         detector_factory=lambda: object(),
@@ -173,10 +210,10 @@ def test_service_cooldown_starts_after_behavior_completion():
     def time_fn():
         return timeline.pop(0)
 
-    def behavior_runner(bucket):
-        calls.append(bucket)
+    def behavior_runner(behavior_key):
+        calls.append(behavior_key)
         time_fn()
-        return bucket
+        return behavior_key
 
     service = IndependentModeService(
         detector_factory=lambda: object(),
@@ -191,5 +228,24 @@ def test_service_cooldown_starts_after_behavior_completion():
     )
     service._behavior_thread.join(timeout=1)
 
-    assert calls == ["people"]
+    assert calls == ["wiggle"]
     assert service._last_completed_times["people"] == 103.0
+
+
+def test_service_skips_bucket_when_behavior_is_none():
+    calls = []
+    service = IndependentModeService(
+        detector_factory=lambda: object(),
+        behavior_runner=lambda behavior_key: calls.append(behavior_key) or behavior_key,
+        camera_command_resolver=lambda: "rpicam-vid",
+        time_fn=lambda: 100.0,
+    )
+    service.update_behavior_config({"people": "none"})
+
+    service._trigger_behaviors(
+        {"people": [Detection(label="person", score=0.91, bbox=(1, 2, 3, 4))]},
+        100.0,
+    )
+
+    assert calls == []
+    assert service._behavior_thread is None

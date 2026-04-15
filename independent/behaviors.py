@@ -28,17 +28,27 @@ def wiggle():
     Stop()
 
 
-BEHAVIOR_MAP = {
-    "cat": ("Spin 360", spin_360),
-    "people": ("Wiggle", wiggle),
+AVAILABLE_BEHAVIORS = {
+    "none": ("No Action", None),
+    "spin_360": ("Spin 360", spin_360),
+    "wiggle": ("Wiggle", wiggle),
 }
 
 
-def trigger_bucket_behavior(bucket):
-    behavior = BEHAVIOR_MAP.get(bucket)
+DEFAULT_BUCKET_BEHAVIORS = {
+    "cat": "spin_360",
+    "people": "wiggle",
+}
+
+
+def trigger_behavior(behavior_key):
+    behavior = AVAILABLE_BEHAVIORS.get(behavior_key)
     if behavior is None:
         return None
 
     behavior_name, handler = behavior
+    if handler is None:
+        return behavior_name
+
     handler()
     return behavior_name

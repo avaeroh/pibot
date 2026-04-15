@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 
 from camera.stream import get_camera_command, iter_mjpeg_frames
-from independent.behaviors import trigger_bucket_behavior
+from independent.behaviors import AVAILABLE_BEHAVIORS, DEFAULT_BUCKET_BEHAVIORS, trigger_behavior
 from independent.detector import TFLiteObjectDetector, bucket_detections, draw_detections, prioritized_buckets, summarize_detections
 from utility.logger import log
 
@@ -28,7 +28,7 @@ class IndependentModeService:
     def __init__(
         self,
         detector_factory=None,
-        behavior_runner=trigger_bucket_behavior,
+        behavior_runner=trigger_behavior,
         camera_command_resolver=get_camera_command,
         popen=subprocess.Popen,
         time_fn=time.monotonic,
@@ -50,6 +50,7 @@ class IndependentModeService:
         self._event_log = []
         self._last_completed_times = {}
         self._active_behavior_bucket = None
+        self._behavior_config = dict(DEFAULT_BUCKET_BEHAVIORS)
         self._latest_summary = "Waiting for detections"
         self._latest_buckets = {}
         self._worker_error = None
@@ -78,6 +79,29 @@ class IndependentModeService:
     def get_worker_error(self):
         with self._lock:
             return self._worker_error
+
+    def get_behavior_config(self):
+        with self._lock:
+            return dict(self._behavior_config)
+
+    def get_behavior_options(self):
+        return {
+            key: {"label": label}
+            for key, (label, _) in AVAILABLE_BEHAVIORS.items()
+        }
+
+    def update_behavior_config(self, mapping):
+        sanitized = {}
+        for bucket, behavior_key in mapping.items():
+            if bucket not in DEFAULT_BUCKET_BEHAVIORS:
+                continue
+            if behavior_key not in AVAILABLE_BEHAVIORS:
+                continue
+            sanitized[bucket] = behavior_key
+
+        with self._lock:
+            self._behavior_config.update(sanitized)
+            return dict(self._behavior_config)
 
     def _get_detector(self):
         if self._detector is None:
@@ -136,9 +160,9 @@ class IndependentModeService:
             return True
         return (now - last_completed) >= BEHAVIOR_COOLDOWN_SECONDS
 
-    def _run_behavior(self, bucket):
+    def _run_behavior(self, bucket, behavior_key):
         try:
-            behavior_name = self._behavior_runner(bucket)
+            behavior_name = self._behavior_runner(behavior_key)
             if behavior_name:
                 self._append_log(f"Completed behavior for {bucket}: {behavior_name}")
         finally:
@@ -156,11 +180,21 @@ class IndependentModeService:
                 continue
 
             with self._lock:
+                behavior_key = self._behavior_config.get(bucket, "none")
+            if behavior_key == "none":
+                continue
+
+            with self._lock:
                 if self._active_behavior_bucket is not None:
                     return
                 self._active_behavior_bucket = bucket
-            self._append_log(f"Matched {bucket}; triggering behavior")
-            self._behavior_thread = threading.Thread(target=self._run_behavior, args=(bucket,), daemon=True)
+            behavior_label = AVAILABLE_BEHAVIORS[behavior_key][0]
+            self._append_log(f"Matched {bucket}; triggering behavior {behavior_label}")
+            self._behavior_thread = threading.Thread(
+                target=self._run_behavior,
+                args=(bucket, behavior_key),
+                daemon=True,
+            )
             self._behavior_thread.start()
             break
 
