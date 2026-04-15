@@ -1,5 +1,6 @@
 from unittest.mock import Mock
 
+from independent.behaviors import DEFAULT_BUCKET_BEHAVIORS
 from independent.detector import Detection, bucket_detections, bucket_for_label, prioritized_buckets, summarize_detections
 from independent.service import IndependentModeService
 
@@ -141,6 +142,64 @@ def test_service_builds_stdout_camera_command():
     assert "mjpeg" in command
 
 
+def test_service_starts_with_default_behavior_mapping():
+    service = IndependentModeService(
+        detector_factory=lambda: object(),
+        behavior_runner=lambda behavior_key: behavior_key,
+        camera_command_resolver=lambda: "rpicam-vid",
+    )
+
+    assert service.get_behavior_config() == DEFAULT_BUCKET_BEHAVIORS
+
+
+def test_service_exposes_behavior_options():
+    service = IndependentModeService(
+        detector_factory=lambda: object(),
+        behavior_runner=lambda behavior_key: behavior_key,
+        camera_command_resolver=lambda: "rpicam-vid",
+    )
+
+    options = service.get_behavior_options()
+
+    assert options == {
+        "none": {"label": "No Action"},
+        "spin_360": {"label": "Spin 360"},
+        "wiggle": {"label": "Wiggle"},
+    }
+
+
+def test_service_updates_behavior_mapping_for_supported_bucket():
+    service = IndependentModeService(
+        detector_factory=lambda: object(),
+        behavior_runner=lambda behavior_key: behavior_key,
+        camera_command_resolver=lambda: "rpicam-vid",
+    )
+
+    updated = service.update_behavior_config({"people": "spin_360"})
+
+    assert updated["people"] == "spin_360"
+    assert service.get_behavior_config()["people"] == "spin_360"
+
+
+def test_service_ignores_invalid_mapping_updates():
+    service = IndependentModeService(
+        detector_factory=lambda: object(),
+        behavior_runner=lambda behavior_key: behavior_key,
+        camera_command_resolver=lambda: "rpicam-vid",
+    )
+
+    updated = service.update_behavior_config(
+        {
+            "people": "invalid_behavior",
+            "unknown_bucket": "wiggle",
+            "cat": "none",
+        }
+    )
+
+    assert updated["people"] == DEFAULT_BUCKET_BEHAVIORS["people"]
+    assert updated["cat"] == "none"
+
+
 def test_service_triggers_highest_priority_bucket_once():
     calls = []
     service = IndependentModeService(
@@ -155,6 +214,25 @@ def test_service_triggers_highest_priority_bucket_once():
             "people": [Detection(label="person", score=0.91, bbox=(1, 2, 3, 4))],
             "cat": [Detection(label="cat", score=0.88, bbox=(5, 6, 7, 8))],
         },
+        100.0,
+    )
+    service._behavior_thread.join(timeout=1)
+
+    assert calls == ["spin_360"]
+
+
+def test_service_uses_updated_behavior_mapping_for_next_detection():
+    calls = []
+    service = IndependentModeService(
+        detector_factory=lambda: object(),
+        behavior_runner=lambda behavior_key: calls.append(behavior_key) or behavior_key,
+        camera_command_resolver=lambda: "rpicam-vid",
+        time_fn=lambda: 100.0,
+    )
+    service.update_behavior_config({"people": "spin_360"})
+
+    service._trigger_behaviors(
+        {"people": [Detection(label="person", score=0.91, bbox=(1, 2, 3, 4))]},
         100.0,
     )
     service._behavior_thread.join(timeout=1)
