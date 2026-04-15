@@ -69,66 +69,56 @@ The app loads `.env` automatically on startup.
 
 ### 2. Install dependencies
 
+Install everything for both modes on a fresh Raspberry Pi:
+
 ```bash
 make all
 ```
 
-Installs system tools, prepares folders, creates both virtual environments, installs the control-mode dependencies into `.venv-control`, and installs the independent-mode stack into `.venv-independent`.
+`make all` now really means all. It will:
+
+- install the system packages
+- create the project folders
+- create `.venv-control` and install the control-mode dependencies
+- bootstrap Python `3.9.19` with `pyenv` if needed for independent mode
+- create `.venv-independent` and install the TensorFlow Lite stack
 
 If you are developing off-device, the Python dependencies are still enough to run the test suite locally. Pi-specific hardware access is mocked in tests.
-
-On a fresh Raspberry Pi OS Bookworm machine, `make all` may still stop at the independent-mode step until Python 3.9 is available. In that case, use the explicit bootstrap flow below and then rerun `make install-independent` if needed.
 
 Split environment summary:
 
 - `.venv-control` -> control mode and tests
 - `.venv-independent` -> independent mode and TensorFlow Lite
 
-You can also install them separately:
+If you only want one mode, use one of the targeted install flows below.
 
-```bash
-make install-control
-make install-independent
-make bootstrap-independent
-```
-
-Independent-mode prerequisites on Raspberry Pi OS Bookworm:
-
-1. Install the normal system packages first:
+Control mode only:
 
 ```bash
 make install-deps
+make install-control
 ```
 
-2. Use the opt-in bootstrap target:
+Independent mode only on a fresh Raspberry Pi OS Bookworm install:
 
 ```bash
+make install-deps
 make bootstrap-independent
 ```
 
-This will:
+This installs the Linux build prerequisites, installs `pyenv` if needed, builds Python `3.9.19`, and installs `.venv-independent`.
 
-- install the Linux build prerequisites for Python 3.9
-- install `pyenv` into `~/.pyenv` if it is missing
-- build Python `3.9.19`
-- install the independent-mode environment into `.venv-independent`
+Independent mode only when you already have a Python 3.9 binary:
 
-3. Confirm that the independent environment is now on Python 3.9:
+```bash
+make install-deps
+make install-independent PYTHON39=/path/to/python3.9
+```
+
+Confirm that the independent environment is on Python 3.9:
 
 ```bash
 .venv-independent/bin/python --version
-```
-
-4. If you already have your own Python 3.9 interpreter and do not want the bootstrap path, you can still install directly:
-
-```bash
-make install-independent
-```
-
-If your Python 3.9 binary lives somewhere non-standard, point Make at it explicitly:
-
-```bash
-make install-independent PYTHON39=/path/to/python3.9
 ```
 
 ---
@@ -230,7 +220,7 @@ Useful routes:
 - `/video_feed` - raw control-mode camera stream
 - `/independent/video_feed` - annotated independent-mode feed
 - `/independent/logs` - independent-mode detection and behaviour log
-- `/independent/config` - current in-memory bucket-to-behavior mapping
+- `/independent/config` - current persisted detection-mode and behavior mapping
 - `/logs` - recent server logs for debugging
 
 ### 7. Use control mode
@@ -256,7 +246,7 @@ Open `/independent`, or run the app with `PIBOT_MODE=independent` and open `/`.
 - `people` currently means any detected `person`
 - `cat` currently means any detected `cat`
 - The initial gesture list is `thumbs_up`, `open_palm`, and `wave`
-- Gesture mappings are persisted now, but live gesture recognition is still a scaffold until a recognizer is added
+- Gesture mappings are persisted now, but live gesture recognition is still a scaffold until a recognizer is added, so gesture mode will not produce real matches yet
 - Mapping changes affect the next eligible detection immediately and are also written to `config/gesture-mappings.json`
 - Detections are throttled with `TFLITE_DETECTION_INTERVAL` and a lower default FPS to stay friendlier to a Raspberry Pi 4
 - Behaviour execution is cooldown-limited so repeated detections do not spam motion commands
@@ -295,10 +285,11 @@ make clean
 - Static pages are organised by mode:
   - `static/control-mode.html`
   - `static/independent-mode.html`
-- Tests are organised by mode:
-  - `tests/control/test_control_mode.py`
-  - `tests/control/test_control_stream.py`
-  - `tests/independent/test_independent_mode.py`
+- Tests are organised by type:
+  - `tests/unit/`
+  - `tests/module/`
+  - `tests/integration/`
+  - `tests/end_to_end/`
 - Tests are designed to run away from the Raspberry Pi by mocking GPIO access, camera/process interactions, and TFLite-dependent pieces
 - Logs are stored in a ring buffer and accessible at:
 

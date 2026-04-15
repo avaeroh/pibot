@@ -204,7 +204,6 @@ class IndependentModeService:
             self._stop_requested = False
             self._worker_error = None
 
-        self._get_detector()
         command = self._build_camera_command()
         self._worker_thread = threading.Thread(target=self._worker_loop, args=(command,), daemon=True)
         self._worker_thread.start()

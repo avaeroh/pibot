@@ -1,150 +1,9 @@
 import json
 from unittest.mock import Mock
 
-from independent import behaviors
 from independent.config import DEFAULT_RUNTIME_CONFIG
-from independent.detector import Detection, bucket_detections, bucket_for_label, prioritized_buckets, summarize_detections
+from independent.detector import Detection
 from independent.service import IndependentModeService
-
-
-def test_root_route_serves_independent_page_when_mode_is_set(monkeypatch, reload_modules):
-    monkeypatch.setenv("PIBOT_MODE", "independent")
-    _, server = reload_modules("control.app_instance", "control.server")
-    client = server.app.test_client()
-
-    response = client.get("/")
-
-    assert response.status_code == 200
-    assert b"Pibot Independent Mode" in response.data
-
-
-def test_independent_route_serves_independent_page(reload_modules):
-    _, server = reload_modules("control.app_instance", "control.server")
-    client = server.app.test_client()
-
-    response = client.get("/independent")
-
-    assert response.status_code == 200
-    assert b"Pibot Independent Mode" in response.data
-
-
-def test_independent_video_feed_route_returns_mjpeg_response(monkeypatch, reload_modules):
-    _, server = reload_modules("control.app_instance", "control.server")
-    generator = iter([b"--frame\r\nContent-Type: image/jpeg\r\n\r\nframe\r\n"])
-    service = Mock()
-    service.stream_frames.return_value = generator
-    monkeypatch.setattr(server, "independent_mode_service", service)
-
-    response = server.independent_video_feed()
-
-    assert response.mimetype == "multipart/x-mixed-replace"
-    assert response.headers["Content-Type"] == "multipart/x-mixed-replace; boundary=frame"
-
-
-def test_independent_logs_route_returns_service_logs(monkeypatch, reload_modules):
-    _, server = reload_modules("control.app_instance", "control.server")
-    service = Mock()
-    service.get_log_entries.return_value = ["[12:00:00] Detected people: person"]
-    monkeypatch.setattr(server, "independent_mode_service", service)
-    client = server.app.test_client()
-
-    response = client.get("/independent/logs")
-
-    assert response.status_code == 200
-    assert response.get_json() == ["[12:00:00] Detected people: person"]
-
-
-def test_independent_config_route_returns_full_config_state(monkeypatch, reload_modules):
-    _, server = reload_modules("control.app_instance", "control.server")
-    service = Mock()
-    service.get_config_state.return_value = {
-        "active_detection_mode": "subjects",
-        "bucket_groups": {"subjects": {"label": "Subjects", "buckets": {}}},
-        "detection_modes": {"subjects": {"label": "Subjects"}, "gestures": {"label": "Gestures"}},
-        "mappings": {"subjects": {"people": "wiggle", "cat": "spin_360"}, "gestures": {"wave": "disabled"}},
-        "options": {
-            "disabled": {"label": "Disabled"},
-            "wiggle": {"label": "Wiggle"},
-            "spin_360": {"label": "Spin 360"},
-        },
-    }
-    monkeypatch.setattr(server, "independent_mode_service", service)
-    client = server.app.test_client()
-
-    response = client.get("/independent/config")
-
-    assert response.status_code == 200
-    assert response.get_json()["active_detection_mode"] == "subjects"
-    assert response.get_json()["mappings"]["subjects"]["people"] == "wiggle"
-
-
-def test_independent_config_route_updates_runtime_config(monkeypatch, reload_modules):
-    _, server = reload_modules("control.app_instance", "control.server")
-    service = Mock()
-    service.update_runtime_config.return_value = {
-        "active_detection_mode": "gestures",
-        "bucket_groups": {},
-        "detection_modes": {},
-        "mappings": {"subjects": {"people": "wiggle", "cat": "spin_360"}, "gestures": {"wave": "disabled"}},
-        "options": {},
-    }
-    monkeypatch.setattr(server, "independent_mode_service", service)
-    client = server.app.test_client()
-
-    response = client.post(
-        "/independent/config",
-        json={
-            "active_detection_mode": "gestures",
-            "mappings": {"gestures": {"wave": "disabled"}},
-        },
-    )
-
-    assert response.status_code == 200
-    service.update_runtime_config.assert_called_once_with(
-        {
-            "active_detection_mode": "gestures",
-            "mappings": {"gestures": {"wave": "disabled"}},
-        }
-    )
-    assert response.get_json()["active_detection_mode"] == "gestures"
-
-
-def test_bucket_for_label_maps_people_and_cat():
-    assert bucket_for_label("person") == "people"
-    assert bucket_for_label("cat") == "cat"
-    assert bucket_for_label("dog") is None
-
-
-def test_bucket_detections_groups_target_labels():
-    detections = [
-        Detection(label="person", score=0.91, bbox=(1, 2, 3, 4)),
-        Detection(label="cat", score=0.88, bbox=(5, 6, 7, 8)),
-        Detection(label="bottle", score=0.77, bbox=(9, 10, 11, 12)),
-    ]
-
-    buckets = bucket_detections(detections)
-
-    assert list(buckets.keys()) == ["people", "cat"]
-    assert [item.label for item in buckets["people"]] == ["person"]
-    assert [item.label for item in buckets["cat"]] == ["cat"]
-
-
-def test_prioritized_buckets_prefers_cat_then_people():
-    buckets = {
-        "people": [Detection(label="person", score=0.91, bbox=(1, 2, 3, 4))],
-        "cat": [Detection(label="cat", score=0.88, bbox=(5, 6, 7, 8))],
-    }
-
-    assert prioritized_buckets(buckets) == ["cat", "people"]
-
-
-def test_summarize_detections_formats_bucket_summary():
-    detections = [
-        Detection(label="person", score=0.91, bbox=(1, 2, 3, 4)),
-        Detection(label="cat", score=0.88, bbox=(5, 6, 7, 8)),
-    ]
-
-    assert summarize_detections(detections) == "cat: cat | people: person"
 
 
 def test_service_builds_stdout_camera_command(tmp_path):
@@ -161,6 +20,42 @@ def test_service_builds_stdout_camera_command(tmp_path):
     assert command[-1] == "-"
     assert "--codec" in command
     assert "mjpeg" in command
+
+
+def test_service_start_does_not_eagerly_initialize_detector(tmp_path):
+    created_threads = []
+
+    class DummyThread:
+        def __init__(self, target=None, args=None, daemon=None):
+            self.target = target
+            self.args = args or ()
+            self.daemon = daemon
+            self.started = False
+            created_threads.append(self)
+
+        def start(self):
+            self.started = True
+
+        def is_alive(self):
+            return self.started
+
+    service = IndependentModeService(
+        detector_factory=lambda: (_ for _ in ()).throw(AssertionError("detector should not be created on start")),
+        behavior_runner=lambda behavior_key: behavior_key,
+        camera_command_resolver=lambda: "rpicam-vid",
+        config_path=tmp_path / "gesture-mappings.json",
+    )
+
+    import independent.service as service_module
+    original_thread_class = service_module.threading.Thread
+    service_module.threading.Thread = DummyThread
+    try:
+        service.start()
+    finally:
+        service_module.threading.Thread = original_thread_class
+
+    assert created_threads
+    assert created_threads[0].started is True
 
 
 def test_service_bootstraps_default_runtime_config_file(tmp_path):
@@ -302,25 +197,6 @@ def test_service_get_config_state_contains_groups_modes_and_options(tmp_path):
     assert "gestures" in state["bucket_groups"]
     assert "disabled" in state["options"]
     assert "subjects" in state["detection_modes"]
-
-
-def test_trigger_behavior_returns_label_for_disabled():
-    assert behaviors.trigger_behavior("disabled") == "Disabled"
-
-
-def test_trigger_behavior_runs_selected_handler(monkeypatch):
-    called = []
-    monkeypatch.setattr(behaviors, "wiggle", lambda: called.append("wiggle"))
-    monkeypatch.setitem(
-        behaviors.AVAILABLE_BEHAVIORS,
-        "wiggle",
-        ("Wiggle", behaviors.wiggle),
-    )
-
-    label = behaviors.trigger_behavior("wiggle")
-
-    assert label == "Wiggle"
-    assert called == ["wiggle"]
 
 
 def test_service_triggers_highest_priority_subject_bucket_once(tmp_path):

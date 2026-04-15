@@ -1,4 +1,4 @@
-.PHONY: all setup install-deps install-python39-build-deps install-python39 bootstrap-independent install-control-python-deps install-independent-python-deps install-control install-independent download-models run run-control run-independent test clean setup-pipe stream kill-camera
+.PHONY: all setup install-deps install-python39-build-deps install-python39 bootstrap-independent install-control-python-deps install-independent-python-deps install-control install-independent install-independent-existing-python download-models run run-control run-independent test clean setup-pipe stream kill-camera
 
 VENV_CONTROL := .venv-control
 VENV_INDEPENDENT := .venv-independent
@@ -14,7 +14,7 @@ else
 CONTROL_PYTHON := $(VENV_CONTROL)/bin/python
 endif
 
-all: setup install-deps install-control install-independent
+all: setup install-deps install-control bootstrap-independent
 
 setup:
 	@echo "[Setup] Creating app directory structure"
@@ -97,6 +97,10 @@ install-independent-python-deps:
 install-control: install-control-python-deps
 
 install-independent: install-independent-python-deps
+
+install-independent-existing-python:
+	@echo "[Python] Installing independent mode with an existing Python 3.9 interpreter"
+	$(MAKE) install-independent PYTHON39=$(PYTHON39)
 
 download-models:
 	@echo "[Model] Downloading TensorFlow Lite models"

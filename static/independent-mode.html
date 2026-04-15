@@ -52,7 +52,14 @@
 
         .content {
             display: grid;
-            grid-template-columns: 2fr 1fr;
+            grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+            gap: 16px;
+            align-items: start;
+        }
+
+        .main-column,
+        .side-column {
+            display: grid;
             gap: 16px;
         }
 
@@ -70,7 +77,7 @@
         }
 
         #log-output {
-            height: 300px;
+            height: 220px;
             overflow-y: auto;
             font-family: monospace;
             white-space: pre-wrap;
@@ -78,6 +85,12 @@
             color: #d7e3f4;
             border-radius: 12px;
             padding: 12px;
+        }
+
+        .feed-status {
+            margin-top: 12px;
+            color: #52606d;
+            line-height: 1.5;
         }
 
         .note {
@@ -159,17 +172,27 @@
         </div>
 
         <div class="content">
-            <div class="panel">
-                <div class="status">Live Independent Feed</div>
-                <img id="video" src="/independent/video_feed" alt="Independent mode detection feed" />
-                <p class="note">Only one detection mode can be active at a time. <strong>Subjects</strong> uses the current TFLite detector for <strong>people</strong> and <strong>cat</strong>. <strong>Gestures</strong> keeps its own mappings ready for future hand-gesture recognition.</p>
+            <div class="main-column">
+                <div class="panel">
+                    <div class="status">Live Independent Feed</div>
+                    <img id="video" src="/independent/video_feed" alt="Independent mode detection feed" />
+                    <p id="feed-status" class="feed-status">Loading live feed...</p>
+                    <p class="note">Only one detection mode can be active at a time. <strong>Subjects</strong> uses the current TFLite detector for <strong>people</strong> and <strong>cat</strong>. <strong>Gestures</strong> keeps its own mappings ready for future hand-gesture recognition.</p>
+                </div>
+
+                <div class="panel">
+                    <div class="status">Detection Log</div>
+                    <div id="log-output">Waiting for detections...</div>
+                    <p class="note">If the feed cannot start, the backend error should appear here after the next log refresh.</p>
+                </div>
             </div>
 
-            <div class="panel">
-                <div class="status">Config and Log</div>
-                <div id="config-panel" class="config-grid"></div>
-                <div id="log-output">Waiting for detections...</div>
-                <p class="note">Mappings are applied in memory immediately and are also written to the persisted config file so they survive restarts. Every subject and gesture can be set to <strong>Disabled</strong>.</p>
+            <div class="side-column">
+                <div class="panel">
+                    <div class="status">Config</div>
+                    <div id="config-panel" class="config-grid"></div>
+                    <p class="note">Mappings are applied in memory immediately and are also written to the persisted config file so they survive restarts. Every subject and gesture can be set to <strong>Disabled</strong>.</p>
+                </div>
             </div>
         </div>
     </div>
@@ -178,6 +201,7 @@
         const logOutput = document.getElementById('log-output');
         const video = document.getElementById('video');
         const configPanel = document.getElementById('config-panel');
+        const feedStatus = document.getElementById('feed-status');
 
         function renderModeSection(config) {
             const card = document.createElement('div');
@@ -287,6 +311,12 @@
                 const response = await fetch('/independent/logs');
                 const data = await response.json();
                 renderLogs(data);
+                if (data.length) {
+                    const lastLine = data[data.length - 1];
+                    if (lastLine.includes('error') || lastLine.includes('failed')) {
+                        feedStatus.textContent = 'Feed issue detected. See the latest log entry below.';
+                    }
+                }
             } catch (error) {
                 logOutput.textContent = `Failed to load independent-mode logs: ${error}`;
             }
@@ -314,7 +344,14 @@
             renderConfig(data);
         }
 
-        video.addEventListener('error', refreshLogs);
+        video.addEventListener('load', () => {
+            feedStatus.textContent = 'Live feed connected.';
+        });
+
+        video.addEventListener('error', () => {
+            feedStatus.textContent = 'Live feed failed to load. Checking logs...';
+            refreshLogs();
+        });
 
         refreshConfig();
         refreshLogs();
