@@ -1,5 +1,6 @@
 from unittest.mock import Mock
 
+from independent import behaviors
 from independent.behaviors import DEFAULT_BUCKET_BEHAVIORS
 from independent.detector import Detection, bucket_detections, bucket_for_label, prioritized_buckets, summarize_detections
 from independent.service import IndependentModeService
@@ -181,6 +182,19 @@ def test_service_updates_behavior_mapping_for_supported_bucket():
     assert service.get_behavior_config()["people"] == "spin_360"
 
 
+def test_service_returns_mapping_copy_not_live_reference():
+    service = IndependentModeService(
+        detector_factory=lambda: object(),
+        behavior_runner=lambda behavior_key: behavior_key,
+        camera_command_resolver=lambda: "rpicam-vid",
+    )
+
+    snapshot = service.get_behavior_config()
+    snapshot["people"] = "none"
+
+    assert service.get_behavior_config()["people"] == DEFAULT_BUCKET_BEHAVIORS["people"]
+
+
 def test_service_ignores_invalid_mapping_updates():
     service = IndependentModeService(
         detector_factory=lambda: object(),
@@ -198,6 +212,25 @@ def test_service_ignores_invalid_mapping_updates():
 
     assert updated["people"] == DEFAULT_BUCKET_BEHAVIORS["people"]
     assert updated["cat"] == "none"
+
+
+def test_trigger_behavior_returns_label_for_none():
+    assert behaviors.trigger_behavior("none") == "No Action"
+
+
+def test_trigger_behavior_runs_selected_handler(monkeypatch):
+    called = []
+    monkeypatch.setattr(behaviors, "wiggle", lambda: called.append("wiggle"))
+    monkeypatch.setitem(
+        behaviors.AVAILABLE_BEHAVIORS,
+        "wiggle",
+        ("Wiggle", behaviors.wiggle),
+    )
+
+    label = behaviors.trigger_behavior("wiggle")
+
+    assert label == "Wiggle"
+    assert called == ["wiggle"]
 
 
 def test_service_triggers_highest_priority_bucket_once():
