@@ -21,7 +21,7 @@ My robot Pi! This has been built with:
 - Automatic install/run via Makefile targets for each mode
 - Can be developed against without GPIO functionality (utilising a mocked import of GPIO)
 - Hold-to-move control flow over Socket.IO with explicit stop on key release, disconnect, or browser blur
-- Independent mode powered by TensorFlow Lite object detection for `subjects` and a gesture-ready config path for future hand recognition
+- Independent mode powered by TensorFlow Lite object detection for `subjects` and a live hand-gesture recognition
 - Independent mode browser controls for switching between `subjects` and `gestures`, and mapping each recognition bucket to persisted behaviors
 - Readable `pytest` suite covering movement controls, routes/logging, mode routing, Socket.IO control events, camera lifecycle/stream parsing, persisted independent-mode config, and detection logic
 
@@ -189,7 +189,7 @@ Mode summary:
   - browser mapping config is available at `/independent/config`
   - only one detection mode can be active at a time: `subjects` or `gestures`
   - `subjects` currently uses the live TFLite detector for `people` and `cat`
-  - `gestures` currently exposes the initial gesture list `thumbs_up`, `open_palm`, and `wave`
+  - `gestures` currently recognizes `thumbs_up` and `open_palm`
   - every subject and gesture can be mapped to `Disabled`, `Wiggle`, or `Spin 360`
   - config is persisted to `config/gesture-mappings.json` and reloaded on startup
 
@@ -245,8 +245,8 @@ Open `/independent`, or run the app with `PIBOT_MODE=independent` and open `/`.
 - `subjects` and `gestures` are mutually exclusive in the UI and the backend
 - `people` currently means any detected `person`
 - `cat` currently means any detected `cat`
-- The initial gesture list is `thumbs_up`, `open_palm`, and `wave`
-- Gesture mappings are persisted now, but live gesture recognition is still a scaffold until a recognizer is added, so gesture mode will not produce real matches yet
+- The current gesture list is `thumbs_up` and `open_palm`
+- Gesture mappings are persisted and gesture mode can now recognize `thumbs_up` and `open_palm` live via MediaPipe Hands
 - Mapping changes affect the next eligible detection immediately and are also written to `config/gesture-mappings.json`
 - Detections are throttled with `TFLITE_DETECTION_INTERVAL` and a lower default FPS to stay friendlier to a Raspberry Pi 4
 - Behaviour execution is cooldown-limited so repeated detections do not spam motion commands
@@ -275,11 +275,10 @@ make clean
 - Detection modes are exclusive by design:
   - `subjects` enables the current TFLite detector
   - `gestures` disables `subjects` and switches to the gesture bucket config
-- The initial gesture buckets are:
+- The current gesture buckets are:
   - `thumbs_up`
   - `open_palm`
-  - `wave`
-- Gesture mappings are persisted and survive restart, but the gesture recognizer itself is still a future extension point
+- Gesture mappings are persisted and survive restart, and gesture recognition runs only when `gestures` mode is active
 - The current behaviours are best-effort time-based motor routines, not encoder-verified precise motion
 - The server binds to `0.0.0.0` and uses `FLASK_PORT` if set, otherwise port `5000`
 - Static pages are organised by mode:
@@ -363,6 +362,6 @@ make run
 ## TODO
 
 - Improve frontend with camera status indicator & quality
-- Add a live gesture recognizer so `thumbs_up`, `open_palm`, and `wave` can trigger from the camera feed
+- Expand the gesture recognizer beyond `thumbs_up` and `open_palm`
 - Add configurable object buckets beyond `people` and `cat`
 - Add richer independent-mode behaviours

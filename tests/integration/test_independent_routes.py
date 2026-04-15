@@ -56,7 +56,7 @@ def test_independent_config_route_returns_full_config_state(monkeypatch, reload_
         "active_detection_mode": "subjects",
         "bucket_groups": {"subjects": {"label": "Subjects", "buckets": {}}},
         "detection_modes": {"subjects": {"label": "Subjects"}, "gestures": {"label": "Gestures"}},
-        "mappings": {"subjects": {"people": "wiggle", "cat": "spin_360"}, "gestures": {"wave": "disabled"}},
+        "mappings": {"subjects": {"people": "wiggle", "cat": "spin_360"}, "gestures": {"open_palm": "spin_360"}},
         "options": {
             "disabled": {"label": "Disabled"},
             "wiggle": {"label": "Wiggle"},
@@ -81,7 +81,7 @@ def test_independent_config_route_updates_runtime_config(monkeypatch, reload_mod
         "active_detection_mode": "gestures",
         "bucket_groups": {},
         "detection_modes": {},
-        "mappings": {"subjects": {"people": "wiggle", "cat": "spin_360"}, "gestures": {"wave": "disabled"}},
+        "mappings": {"subjects": {"people": "wiggle", "cat": "spin_360"}, "gestures": {"open_palm": "spin_360"}},
         "options": {},
         "visible_bucket_group": "gestures",
     }
@@ -92,7 +92,7 @@ def test_independent_config_route_updates_runtime_config(monkeypatch, reload_mod
         "/independent/config",
         json={
             "active_detection_mode": "gestures",
-            "mappings": {"gestures": {"wave": "disabled"}},
+            "mappings": {"gestures": {"open_palm": "spin_360"}},
         },
     )
 
@@ -100,7 +100,7 @@ def test_independent_config_route_updates_runtime_config(monkeypatch, reload_mod
     service.update_runtime_config.assert_called_once_with(
         {
             "active_detection_mode": "gestures",
-            "mappings": {"gestures": {"wave": "disabled"}},
+            "mappings": {"gestures": {"open_palm": "spin_360"}},
         }
     )
     assert response.get_json()["active_detection_mode"] == "gestures"
@@ -113,12 +113,12 @@ def test_independent_config_route_exposes_visible_bucket_group(monkeypatch, relo
         "active_detection_mode": "gestures",
         "bucket_groups": {
             "subjects": {"label": "Subjects", "buckets": {"people": {"label": "People"}}},
-            "gestures": {"label": "Gestures", "buckets": {"wave": {"label": "Wave"}}},
+            "gestures": {"label": "Gestures", "buckets": {"open_palm": {"label": "Open Palm"}}},
         },
         "detection_modes": {"subjects": {"label": "Subjects"}, "gestures": {"label": "Gestures"}},
         "mappings": {
             "subjects": {"people": "wiggle"},
-            "gestures": {"wave": "disabled"},
+            "gestures": {"open_palm": "spin_360"},
         },
         "options": {"disabled": {"label": "Disabled"}},
         "visible_bucket_group": "gestures",

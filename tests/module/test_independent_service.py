@@ -96,7 +96,7 @@ def test_service_normalizes_invalid_persisted_runtime_config(tmp_path):
     assert service.get_active_detection_mode() == "subjects"
     assert service.get_behavior_config()["subjects"]["people"] == "wiggle"
     assert service.get_behavior_config()["gestures"]["thumbs_up"] == "wiggle"
-    assert service.get_behavior_config()["gestures"]["wave"] == "disabled"
+    assert service.get_behavior_config()["gestures"]["open_palm"] == "spin_360"
     assert json.loads(config_path.read_text()) == service.get_runtime_config()
 
 
@@ -171,7 +171,7 @@ def test_service_ignores_invalid_runtime_config_updates(tmp_path):
             "active_detection_mode": "invalid",
             "mappings": {
                 "subjects": {"people": "invalid_behavior"},
-                "gestures": {"wave": "invalid_behavior"},
+                "gestures": {"open_palm": "invalid_behavior"},
                 "unknown": {"bucket": "wiggle"},
             },
         }
@@ -179,7 +179,7 @@ def test_service_ignores_invalid_runtime_config_updates(tmp_path):
 
     assert state["active_detection_mode"] == "subjects"
     assert state["mappings"]["subjects"]["people"] == "wiggle"
-    assert state["mappings"]["gestures"]["wave"] == "disabled"
+    assert state["mappings"]["gestures"]["open_palm"] == "spin_360"
 
 
 def test_service_get_config_state_contains_groups_modes_and_options(tmp_path):
@@ -277,6 +277,27 @@ def test_service_can_trigger_gesture_mapping_when_gesture_mode_is_active(tmp_pat
     service._behavior_thread.join(timeout=1)
 
     assert calls == ["spin_360"]
+
+
+def test_service_detect_gestures_uses_recognizer_output(tmp_path):
+    recognizer = Mock()
+    recognizer.detect.return_value = [
+        Detection(label="thumbs_up", score=1.0, bbox=(1, 2, 3, 4)),
+        Detection(label="open_palm", score=1.0, bbox=(5, 6, 7, 8)),
+    ]
+    service = IndependentModeService(
+        detector_factory=lambda: object(),
+        gesture_recognizer_factory=lambda: recognizer,
+        behavior_runner=lambda behavior_key: behavior_key,
+        camera_command_resolver=lambda: "rpicam-vid",
+        config_path=tmp_path / "gesture-mappings.json",
+    )
+
+    detections, buckets, summary = service._detect_gestures(Mock())
+
+    assert [detection.label for detection in detections] == ["thumbs_up", "open_palm"]
+    assert list(buckets.keys()) == ["thumbs_up", "open_palm"]
+    assert summary == "thumbs_up: thumbs up | open_palm: open palm"
 
 
 def test_service_respects_behavior_cooldown(tmp_path):

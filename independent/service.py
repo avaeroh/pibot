@@ -11,7 +11,6 @@ from independent.behaviors import AVAILABLE_BEHAVIORS, trigger_behavior
 from independent.config import (
     BUCKET_GROUPS,
     DETECTION_MODES,
-    DEFAULT_RUNTIME_CONFIG,
     get_config_path,
     load_runtime_config,
     normalize_runtime_config,
@@ -23,6 +22,7 @@ from independent.detector import (
     draw_detections,
     summarize_detections,
 )
+from independent.gesture_recognizer import MediaPipeGestureRecognizer, bucket_gesture_detections, summarize_gesture_detections
 from utility.logger import log
 
 MODEL_PATH = os.getenv("TFLITE_MODEL", "models/efficientdet_lite0.tflite")
@@ -37,13 +37,13 @@ BEHAVIOR_COOLDOWN_SECONDS = float(os.getenv("INDEPENDENT_BEHAVIOR_COOLDOWN", 6.0
 JPEG_OUTPUT_QUALITY = int(os.getenv("INDEPENDENT_JPEG_QUALITY", 75))
 CONFIG_PATH = os.getenv("PIBOT_CONFIG_PATH", "config/gesture-mappings.json")
 LOG_LIMIT = 50
-GESTURE_MODE_SUMMARY = "Gesture mode active: waiting for recognizer"
 
 
 class IndependentModeService:
     def __init__(
         self,
         detector_factory=None,
+        gesture_recognizer_factory=None,
         behavior_runner=trigger_behavior,
         camera_command_resolver=get_camera_command,
         popen=subprocess.Popen,
@@ -52,6 +52,7 @@ class IndependentModeService:
         config_path=CONFIG_PATH,
     ):
         self._detector_factory = detector_factory or self._default_detector_factory
+        self._gesture_recognizer_factory = gesture_recognizer_factory or self._default_gesture_recognizer_factory
         self._behavior_runner = behavior_runner
         self._camera_command_resolver = camera_command_resolver
         self._popen = popen
@@ -59,6 +60,7 @@ class IndependentModeService:
         self._sleep_fn = sleep_fn
         self._config_path = get_config_path(config_path)
         self._detector = None
+        self._gesture_recognizer = None
         self._process = None
         self._worker_thread = None
         self._behavior_thread = None
@@ -72,7 +74,6 @@ class IndependentModeService:
         self._latest_buckets = {}
         self._worker_error = None
         self._stop_requested = False
-        self._gesture_notice_logged = False
         self._config = self._load_runtime_config()
 
     def _default_detector_factory(self):
@@ -81,6 +82,9 @@ class IndependentModeService:
             num_threads=2,
             enable_edgetpu=ENABLE_EDGE_TPU,
         )
+
+    def _default_gesture_recognizer_factory(self):
+        return MediaPipeGestureRecognizer()
 
     def _append_log(self, message):
         timestamp = time.strftime("%H:%M:%S")
@@ -174,6 +178,11 @@ class IndependentModeService:
         if self._detector is None:
             self._detector = self._detector_factory()
         return self._detector
+
+    def _get_gesture_recognizer(self):
+        if self._gesture_recognizer is None:
+            self._gesture_recognizer = self._gesture_recognizer_factory()
+        return self._gesture_recognizer
 
     def _build_camera_command(self):
         camera_command = self._camera_command_resolver()
@@ -290,11 +299,12 @@ class IndependentModeService:
         summary_text = summarize_detections(detections)
         return detections, buckets, summary_text
 
-    def _detect_gestures(self):
-        if not self._gesture_notice_logged:
-            self._append_log("Gesture mode is enabled, but no gesture recognizer is configured yet")
-            self._gesture_notice_logged = True
-        return [], {}, GESTURE_MODE_SUMMARY
+    def _detect_gestures(self, frame):
+        recognizer = self._get_gesture_recognizer()
+        detections = recognizer.detect(frame)
+        buckets = bucket_gesture_detections(detections)
+        summary_text = summarize_gesture_detections(detections)
+        return detections, buckets, summary_text
 
     def _worker_loop(self, command):
         try:
@@ -324,7 +334,10 @@ class IndependentModeService:
                 active_mode, previous_buckets, previous_summary = self._get_detection_snapshot()
                 if now - last_detection_time >= DETECTION_INTERVAL_SECONDS:
                     if active_mode == "gestures":
-                        last_detections, buckets, summary_text = self._detect_gestures()
+                        last_detections, buckets, summary_text = self._detect_gestures(frame)
+                        self._trigger_behaviors(buckets, now)
+                        if buckets:
+                            self._append_log(f"Detected {summary_text}")
                     else:
                         last_detections, buckets, summary_text = self._detect_subjects(frame)
                         self._trigger_behaviors(buckets, now)

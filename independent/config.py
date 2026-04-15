@@ -21,7 +21,6 @@ BUCKET_GROUPS = {
         "buckets": {
             "thumbs_up": {"label": "Thumbs Up"},
             "open_palm": {"label": "Open Palm"},
-            "wave": {"label": "Wave"},
         },
     },
 }
@@ -34,7 +33,6 @@ DEFAULT_BEHAVIOR_MAPPINGS = {
     "gestures": {
         "thumbs_up": "wiggle",
         "open_palm": "spin_360",
-        "wave": "disabled",
     },
 }
 
